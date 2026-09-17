@@ -309,9 +309,9 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
         <div class="ctl">
           <div class="lab"><span>書き出す内容</span></div>
           <select id="cwhat">
-            <option value="site">敷地（地形）＋ 等高線 ― 3D・高さ付き</option>
+            <option value="site" selected>敷地（地形）＋ 等高線 ― 3D・高さ付き</option>
             <option value="c3d">等高線のみ ― 3D・高さ付き</option>
-            <option value="flat" selected>等高線のみ ― 平面 Z=0（Illustrator・レーザー）</option>
+            <option value="flat">等高線のみ ― 平面 Z=0（Illustrator・レーザー）</option>
           </select>
         </div>
         <div class="ctl">
@@ -1185,10 +1185,10 @@ const FMT_OPTS = {
 };
 const FMT_NOTE = {
   "site:3dm": "レイヤー「敷地（地形）」にメッシュ、「等高線」の下に標高ごとのレイヤー。線は実際の高さに置かれます。",
-  "site:dxf": "レイヤー TERRAIN に地形の面（3DFACE）、EL_+0050.0 のようなレイヤーに高さ付きの等高線。",
+  "site:dxf": "レイヤー TERRAIN に地形の面（3DFACE）、EL_+0050.0 のようなレイヤーに高さ付きの等高線。DXF R12 形式。",
   "c3d:3dm":  "「等高線」の下に標高ごとのレイヤー。線は実際の高さに置かれます。",
   "c3d:dxf":  "標高ごとのレイヤーに、高さ（Z）付きの等高線。",
-  "flat:dxf": "すべての線を Z=0 に置き、標高ごとにレイヤー分け。Illustrator の「開く」でレイヤー構成が保たれます。",
+  "flat:dxf": "すべての線を Z=0 に置き、標高ごとにレイヤー分け。DXF R12 形式なので、Illustrator や加工機のソフトでも開けます。",
   "flat:svg": "Z=0 の平面図。標高ごとにグループ分け（Illustrator ではレイヤーではなくグループになります）。"
 };
 function fillFormats() {
@@ -1217,58 +1217,74 @@ function terrainGrid(maxVerts) {
   return { nx, ny, xs, ys, z, step };
 }
 
-/* --- DXF --- */
+/* --- DXF（R12＝AC1009。いちばん多くのソフトが読める形式） --- */
 function buildDXF(C, T, opt) {
   const L = [], put = (c, v) => { L.push(c, v); };
-  const u = opt.u, flat = opt.flat;
+  const u = opt.u, zu = opt.zu, flat = opt.flat;
+  const f = v => (Math.round(v * 1e4) / 1e4).toFixed(4);
   const layers = [];
   if (T) layers.push(["TERRAIN", 8]);
   C.levels.forEach((lv, i) => { if (C.sets[i].length) layers.push(["EL_" + elName(lv), i % 5 === 0 ? 1 : 7]); });
-  put(0, "SECTION"); put(2, "HEADER");
-  put(9, "$ACADVER"); put(1, "AC1015");
-  put(9, "$INSUNITS"); put(70, opt.real ? 6 : 4);          // 6 = メートル, 4 = ミリメートル
-  put(0, "ENDSEC");
-  put(0, "SECTION"); put(2, "TABLES");
-  put(0, "TABLE"); put(2, "LTYPE"); put(5, "5"); put(100, "AcDbSymbolTable"); put(70, 1);
-  put(0, "LTYPE"); put(5, "14"); put(100, "AcDbSymbolTableRecord"); put(100, "AcDbLinetypeTableRecord");
-  put(2, "CONTINUOUS"); put(70, 0); put(3, "Solid line"); put(72, 65); put(73, 0); put(40, 0);
-  put(0, "ENDTAB");
-  put(0, "TABLE"); put(2, "LAYER"); put(5, "2"); put(100, "AcDbSymbolTable"); put(70, layers.length);
-  layers.forEach(([nm, col], i) => {
-    put(0, "LAYER"); put(5, (0x200 + i).toString(16).toUpperCase());
-    put(100, "AcDbSymbolTableRecord"); put(100, "AcDbLayerTableRecord");
-    put(2, nm); put(70, 0); put(62, col); put(6, "CONTINUOUS");
+  // 図面の範囲
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  const ext = (x, y, z) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+                             if (z < z0) z0 = z; if (z > z1) z1 = z; };
+  C.levels.forEach((lv, k) => {
+    const z = flat ? 0 : lv * zu;
+    for (const ln of C.sets[k]) for (const p of ln.pts) ext(p[0] * u, p[1] * u, z);
   });
-  put(0, "ENDTAB"); put(0, "ENDSEC");
+  if (T) for (let j = 0; j < T.ny; j++) for (let i = 0; i < T.nx; i++) {
+    const v = T.z[j * T.nx + i]; if (v > NODATA + 1) ext(T.xs[i] * zu, T.ys[j] * zu, v * zu);
+  }
+  if (!isFinite(x0)) { x0 = y0 = z0 = 0; x1 = y1 = z1 = 0; }
+
+  put(0, "SECTION"); put(2, "HEADER");
+  put(9, "$ACADVER"); put(1, "AC1009");
+  put(9, "$INSBASE"); put(10, "0.0"); put(20, "0.0"); put(30, "0.0");
+  put(9, "$EXTMIN"); put(10, f(x0)); put(20, f(y0)); put(30, f(z0));
+  put(9, "$EXTMAX"); put(10, f(x1)); put(20, f(y1)); put(30, f(z1));
+  put(0, "ENDSEC");
+
+  put(0, "SECTION"); put(2, "TABLES");
+  put(0, "TABLE"); put(2, "LTYPE"); put(70, 1);
+  put(0, "LTYPE"); put(2, "CONTINUOUS"); put(70, 0); put(3, "Solid line"); put(72, 65); put(73, 0); put(40, "0.0");
+  put(0, "ENDTAB");
+  put(0, "TABLE"); put(2, "LAYER"); put(70, layers.length);
+  layers.forEach(([nm, col]) => { put(0, "LAYER"); put(2, nm); put(70, 0); put(62, col); put(6, "CONTINUOUS"); });
+  put(0, "ENDTAB");
+  put(0, "ENDSEC");
+
   put(0, "SECTION"); put(2, "ENTITIES");
-  let h = 0x1000;
-  const f = v => v.toFixed(4);
   if (T) {
-    const zu = opt.zu, nx = T.nx;
+    const nx = T.nx;
     for (let j = 0; j < T.ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
       const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
       const za = T.z[a], zb = T.z[b], zd = T.z[d], ze = T.z[e];
       if (za <= NODATA + 1 || zb <= NODATA + 1 || zd <= NODATA + 1 || ze <= NODATA + 1) continue;
-      put(0, "3DFACE"); put(5, (h++).toString(16).toUpperCase());
-      put(100, "AcDbEntity"); put(8, "TERRAIN"); put(100, "AcDbFace");
-      put(10, f(T.xs[i] * zu)); put(20, f(T.ys[j] * zu)); put(30, f(za * zu));
-      put(11, f(T.xs[i + 1] * zu)); put(21, f(T.ys[j] * zu)); put(31, f(zb * zu));
+      put(0, "3DFACE"); put(8, "TERRAIN");
+      put(10, f(T.xs[i] * zu));     put(20, f(T.ys[j] * zu));     put(30, f(za * zu));
+      put(11, f(T.xs[i + 1] * zu)); put(21, f(T.ys[j] * zu));     put(31, f(zb * zu));
       put(12, f(T.xs[i + 1] * zu)); put(22, f(T.ys[j + 1] * zu)); put(32, f(ze * zu));
-      put(13, f(T.xs[i] * zu)); put(23, f(T.ys[j + 1] * zu)); put(33, f(zd * zu));
+      put(13, f(T.xs[i] * zu));     put(23, f(T.ys[j + 1] * zu)); put(33, f(zd * zu));
     }
   }
   C.levels.forEach((lv, k) => {
+    const layer = "EL_" + elName(lv), z = flat ? 0 : lv * zu;
     for (const ln of C.sets[k]) {
-      put(0, "LWPOLYLINE"); put(5, (h++).toString(16).toUpperCase());
-      put(100, "AcDbEntity"); put(8, "EL_" + elName(lv));
-      put(100, "AcDbPolyline"); put(90, ln.pts.length); put(70, ln.closed ? 1 : 0); put(43, 0);
-      if (!flat) put(38, f(lv * opt.zu));
-      for (const p of ln.pts) { put(10, f(p[0] * u)); put(20, f(p[1] * u)); }
+      put(0, "POLYLINE"); put(8, layer); put(66, 1);
+      put(70, (ln.closed ? 1 : 0) | (flat ? 0 : 8));      // 1＝閉じる、8＝3D ポリライン
+      put(10, "0.0"); put(20, "0.0"); put(30, flat ? "0.0" : f(z));
+      for (const p of ln.pts) {
+        put(0, "VERTEX"); put(8, layer);
+        put(10, f(p[0] * u)); put(20, f(p[1] * u)); put(30, flat ? "0.0" : f(z));
+        if (!flat) put(70, 32);
+      }
+      put(0, "SEQEND"); put(8, layer);
     }
   });
   put(0, "ENDSEC"); put(0, "EOF");
   const out = [];
-  for (let i = 0; i < L.length; i += 2) out.push(String(L[i]), "\n", String(L[i + 1]), "\n");
+  for (let i = 0; i < L.length; i += 2) out.push(String(L[i]), "\r\n", String(L[i + 1]), "\r\n");
   return out.join("");
 }
 

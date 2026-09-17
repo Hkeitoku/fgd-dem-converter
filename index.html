@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>基盤地図情報DEM変換</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#eef1ef; --surface:#fbfcfb; --sunk:#e4e9e6;
+  --ink:#16211f; --body:#33403c; --muted:#66756f; --faint:#8c9a94;
+  --line:#d2dbd6; --hair:#e2e8e5;
+  --accent:#0f6b63; --accent-ink:#fff; --accent-soft:#d8ebe7;
+  --warn:#9a4b18; --sea:#c3d6e2;
+  --disp:"Zen Old Mincho",serif;
+  --ui:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0e1413; --surface:#161e1c; --sunk:#111917;
+    --ink:#e6edea; --body:#c3cfcb; --muted:#8fa09a; --faint:#6d7d77;
+    --line:#26322e; --hair:#1e2826;
+    --accent:#4fc0ae; --accent-ink:#08201c; --accent-soft:#16332e;
+    --warn:#e09468; --sea:#25333d;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0e1413; --surface:#161e1c; --sunk:#111917;
+  --ink:#e6edea; --body:#c3cfcb; --muted:#8fa09a; --faint:#6d7d77;
+  --line:#26322e; --hair:#1e2826;
+  --accent:#4fc0ae; --accent-ink:#08201c; --accent-soft:#16332e;
+  --warn:#e09468; --sea:#25333d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--body);
+  font-family:var(--ui);font-size:14px;line-height:1.75;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1160px;margin:0 auto;padding-block:32px 72px;padding-left:20px;padding-right:20px}
+
+/* ---- header ---- */
+.masthead{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:26px}
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 10px}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(25px,4.4vw,38px);line-height:1.25;
+  margin:0;color:var(--ink);text-wrap:balance;letter-spacing:.01em}
+.lede{margin:12px 0 0;max-width:62ch;color:var(--muted);font-size:13.5px}
+
+/* ---- layout ---- */
+.deck{display:grid;grid-template-columns:minmax(0,1fr) 316px;gap:22px;align-items:start}
+@media (max-width:920px){.deck{grid-template-columns:1fr}}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:4px}
+.panel>.pad{padding:16px 18px}
+.phead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:12px 18px;border-bottom:1px solid var(--hair)}
+.phead h2{font-family:var(--disp);font-weight:600;font-size:14.5px;margin:0;color:var(--ink);letter-spacing:.02em}
+.phead .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+
+/* ---- drop ---- */
+#drop{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  padding:13px 16px;margin-bottom:14px;cursor:pointer;
+  background:var(--surface);border:1px dashed var(--line);border-radius:4px;
+  font:inherit;color:inherit;transition:border-color .15s,background .15s}
+#drop:hover,#drop.hot{border-color:var(--accent);background:var(--accent-soft)}
+#drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#drop .ic{flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:3px;
+  background:var(--accent-soft);color:var(--accent)}
+:root[data-theme="dark"] #drop .ic,
+:root:not([data-theme="light"]) #drop .ic{background:var(--sunk)}
+#drop b{display:block;font-weight:500;font-size:13.5px;color:var(--ink)}
+#drop small{display:block;color:var(--muted);font-size:11.5px;line-height:1.5}
+
+/* ---- map ---- */
+.mapwrap{position:relative;padding:14px 18px 6px}
+canvas{display:block;width:100%;height:auto;max-width:100%;border-radius:2px;
+  background:var(--sea);touch-action:none;cursor:crosshair}
+.maprow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 18px 14px;font-size:11.5px;color:var(--muted)}
+
+/* ---- readout ---- */
+dl.read{margin:0;display:grid;grid-template-columns:auto 1fr;gap:0 14px}
+dl.read dt{color:var(--muted);font-size:12px;padding:5px 0;border-bottom:1px solid var(--hair);white-space:nowrap}
+dl.read dd{margin:0;padding:5px 0;border-bottom:1px solid var(--hair);text-align:right;
+  font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink)}
+dl.read dt:last-of-type,dl.read dd:last-of-type{border-bottom:0}
+
+/* ---- controls ---- */
+.ctl{padding:14px 18px}
+.ctl+.ctl{border-top:1px solid var(--hair)}
+.lab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.lab span:first-child{font-size:12.5px;color:var(--body)}
+.lab span:last-child{font-family:var(--mono);font-size:11.5px;color:var(--accent);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;display:block}
+select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:3px;
+  background:var(--sunk);color:var(--ink);font-family:var(--ui);font-size:12.5px}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+button{font-family:var(--ui);font-size:12.5px;border:1px solid var(--line);border-radius:3px;
+  background:var(--surface);color:var(--body);padding:5px 11px;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+#go{width:100%;padding:12px;background:var(--accent);color:var(--accent-ink);border-color:var(--accent);
+  font-weight:700;font-size:13.5px;letter-spacing:.04em}
+#go:hover{filter:brightness(1.08);color:var(--accent-ink)}
+#go:disabled{opacity:.4;cursor:not-allowed;filter:none}
+.estim{font-family:var(--mono);font-size:11px;line-height:1.75;color:var(--muted);
+  margin:10px 0 0;font-variant-numeric:tabular-nums}
+.estim .hi{color:var(--ink)}
+.estim .bad{color:var(--warn)}
+
+.status{font-family:var(--mono);font-size:11px;color:var(--muted);margin:0;min-height:1.6em}
+.status.err{color:var(--warn)}
+.meter{height:3px;background:var(--sunk);border-radius:2px;overflow:hidden;margin:8px 0 6px}
+.meter>i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s}
+
+.hide{display:none!important}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted);font-size:11.5px}
+.chk input{accent-color:var(--accent);margin:0}
+#cgo{width:100%;margin-top:11px;padding:11px;background:var(--surface);color:var(--accent);
+  border:1px solid var(--accent);font-weight:700;font-size:13px;letter-spacing:.04em}
+#cgo:hover{background:var(--accent-soft)}
+#cgo:disabled{opacity:.4;cursor:not-allowed;background:var(--surface)}
+.sub{font-size:11px;color:var(--faint);margin:6px 0 0;line-height:1.6}
+input[type=number]{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:3px;
+  background:var(--sunk);color:var(--ink);font-family:var(--mono);font-size:12.5px}
+footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--faint);max-width:78ch}
+footer p{margin:0 0 7px}
+footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="masthead">
+    <p class="eyebrow">国土地理院 基盤地図情報 / 数値標高モデル</p>
+    <h1>DEM から地形メッシュをつくる</h1>
+    <p class="lede">ダウンロードサービスで配布される JPGIS(GML) 形式の標高データを、Rhino・Grasshopper で読めるメッシュに変換します。ファイルはブラウザの中だけで処理され、どこにも送信されません。</p>
+  </div>
+
+  <div class="deck">
+    <div>
+      <button id="drop" type="button">
+        <span class="ic" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M8 1.6v8.2M5 6.9 8 9.9l3-3"/><path d="M2.2 11.3v2.1a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1v-2.1"/>
+          </svg>
+        </span>
+        <span>
+          <b>zip または xml をここにドロップ</b>
+          <small>ダウンロードした親 zip のままで結構です。入れ子の zip も自動で開きます。クリックでファイル選択。</small>
+        </span>
+      </button>
+
+      <div class="panel">
+        <div class="phead">
+          <h2>陰影起伏図</h2>
+          <span class="tag" id="srctag">サンプル：伊豆大島</span>
+        </div>
+        <div class="mapwrap"><canvas id="cv" width="120" height="120"></canvas></div>
+        <div class="maprow">
+          <span>図の上をドラッグすると書き出す範囲を切り出せます</span>
+          <span style="display:flex;gap:14px;align-items:center">
+            <label class="chk" for="showc"><input type="checkbox" id="showc" checked>等高線を重ねる</label>
+            <button id="reset" type="button">全体に戻す</button>
+          </span>
+        </div>
+        <div class="pad" style="border-top:1px solid var(--hair)">
+          <div class="meter"><i id="pbar"></i></div>
+          <p class="status" id="status">サンプルデータを表示しています。自分のデータを読み込むと置き換わります。</p>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="phead"><h2>読み込んだデータ</h2><span class="tag">source</span></div>
+        <div class="pad"><dl class="read" id="meta"></dl></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="phead"><h2>3D メッシュ</h2><span class="tag">OBJ</span></div>
+
+        <div class="ctl">
+          <div class="lab"><span>解像度（間引き）</span><span id="stepv">1/1</span></div>
+          <input type="range" id="step" min="1" max="10" value="1">
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>標高の倍率</span><span id="zsv">×1.0</span></div>
+          <input type="range" id="zs" min="5" max="50" value="10">
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>海・データなしの扱い</span></div>
+          <select id="sea">
+            <option value="flat">標高 0 m の平面で埋める</option>
+            <option value="hole">面を張らない（穴を開ける）</option>
+            <option value="min">範囲内の最低標高で埋める</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>原点の位置</span></div>
+          <select id="org">
+            <option value="sw">切り出し範囲の南西角</option>
+            <option value="center">切り出し範囲の中心</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>水平方向の単位</span></div>
+          <select id="unit">
+            <option value="1">メートル</option>
+            <option value="1000">ミリメートル</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <button id="go" type="button">OBJ を書き出す</button>
+          <p class="estim" id="estim"></p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="phead"><h2>積層模型の等高線</h2><span class="tag">DXF / SVG</span></div>
+
+        <div class="ctl">
+          <div class="lab"><span>模型の縮尺</span><span id="scv">1 / 2000</span></div>
+          <select id="scale">
+            <option value="100">1 / 100</option>
+            <option value="200">1 / 200</option>
+            <option value="300">1 / 300</option>
+            <option value="500">1 / 500</option>
+            <option value="1000">1 / 1000</option>
+            <option value="2000" selected>1 / 2000</option>
+            <option value="2500">1 / 2500</option>
+            <option value="5000">1 / 5000</option>
+            <option value="10000">1 / 10000</option>
+          </select>
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>板の厚み</span><span id="thv">5 mm</span></div>
+          <select id="thick">
+            <option value="1">1 mm（ケント紙・バルサ）</option>
+            <option value="2">2 mm（スチレンボード）</option>
+            <option value="3">3 mm（スチレンボード）</option>
+            <option value="5" selected>5 mm（スチレンボード）</option>
+            <option value="7">7 mm（スチレンボード）</option>
+            <option value="10">10 mm（スチレンボード）</option>
+          </select>
+          <p class="sub" id="ivnote"></p>
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>等高線の間隔</span><span id="ivv">10 m</span></div>
+          <select id="ivmode">
+            <option value="auto" selected>板厚と縮尺から決める</option>
+            <option value="manual">自分で決める</option>
+          </select>
+          <input type="number" id="ivman" class="hide" style="margin-top:8px" min="0.1" step="0.1" value="10">
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>平滑化（ノイズ除去）</span><span id="smv">やや強め</span></div>
+          <input type="range" id="sm" min="0" max="6" value="3">
+          <p class="sub">航空レーザ測量は樹木や建物の凹凸まで拾っています。強めるほど地形だけの滑らかな線になります。</p>
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>切り捨てる島の大きさ</span><span id="mav">2.0 mm² 未満</span></div>
+          <input type="range" id="ma" min="0" max="50" value="20">
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>線の単純化</span><span id="tlv">0.15 mm</span></div>
+          <input type="range" id="tl" min="0" max="30" value="3">
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>書き出す形式</span></div>
+          <select id="cfmt">
+            <option value="dxf">DXF（標高ごとにレイヤー分け・zip）</option>
+            <option value="svg">SVG（レーザー加工機・Illustrator）</option>
+          </select>
+          <button id="cgo" type="button">等高線を書き出す</button>
+          <p class="estim" id="cest"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p><b>座標について</b>　出力は X＝東・Y＝北・Z＝標高 の Z 軸上向きです。緯度経度を範囲中心の緯度で平面に近似しているため、数 km 四方であれば建築用途で問題になる歪みは出ません。</p>
+    <p><b>対応するデータ</b>　数値標高モデル（5m メッシュ・10m メッシュ）専用です。建築物や道路などの「基本項目」には対応していません。</p>
+    <p><b>保存形式</b>　このページでは OBJ を zip に収めてお渡しします（<code>.obj</code> が保存できる拡張子に含まれていないため）。展開して Rhino の <code>Import</code> で読み込んでください。</p>
+    <p>出典：国土地理院 基盤地図情報 ダウンロードサービス　<code>https://service.gsi.go.jp/kiban/</code></p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const NODATA = -9999;
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("ja-JP");
+const yield_ = () => new Promise(r => setTimeout(r, 0));
+const say = (m, bad) => { const s = $("status"); s.textContent = m; s.classList.toggle("err", !!bad); };
+const prog = f => { $("pbar").style.width = (f * 100).toFixed(1) + "%"; };
+
+/* ===== zip 読み ===== */
+async function unzip(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 66000); i--)
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("zip として読めません");
+  const n = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    const lho = dv.getUint32(p + 42, true);
+    const name = new TextDecoder("utf-8").decode(u8.subarray(p + 46, p + 46 + nl));
+    p += 46 + nl + el + cl;
+    if (name.endsWith("/")) continue;
+    const s = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+    out.push({ name, method, raw: u8.subarray(s, s + csize) });
+  }
+  return out;
+}
+async function inflate(e) {
+  if (e.method === 0) return e.raw.slice().buffer;
+  if (e.method !== 8) throw new Error("未対応の圧縮方式");
+  return await new Response(new Blob([e.raw]).stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
+}
+
+/* ===== zip 書き ===== */
+const CRCT = (() => { const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = CRCT[(c ^ u8[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0; }
+async function zipFiles(files) {
+  const te = new TextEncoder(), locals = [], centrals = [];
+  let off = 0;
+  for (const f of files) {
+    const nb = te.encode(f.name);
+    const u8 = typeof f.data === "string" ? te.encode(f.data) : f.data;
+    const crc = crc32(u8);
+    let body = u8, method = 0;
+    try {
+      const z = new Uint8Array(await new Response(new Blob([u8]).stream()
+        .pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer());
+      if (z.length < u8.length) { body = z; method = 8; }
+    } catch (_) {}
+    const lh = new Uint8Array(30 + nb.length), a = new DataView(lh.buffer);
+    a.setUint32(0, 0x04034b50, true); a.setUint16(4, 20, true); a.setUint16(8, method, true);
+    a.setUint16(10, 0, true); a.setUint16(12, 0x21, true);
+    a.setUint32(14, crc, true); a.setUint32(18, body.length, true); a.setUint32(22, u8.length, true);
+    a.setUint16(26, nb.length, true); lh.set(nb, 30);
+    const cd = new Uint8Array(46 + nb.length), b = new DataView(cd.buffer);
+    b.setUint32(0, 0x02014b50, true); b.setUint16(4, 20, true); b.setUint16(6, 20, true);
+    b.setUint16(10, method, true); b.setUint16(12, 0, true); b.setUint16(14, 0x21, true);
+    b.setUint32(16, crc, true); b.setUint32(20, body.length, true); b.setUint32(24, u8.length, true);
+    b.setUint16(28, nb.length, true); b.setUint32(42, off, true); cd.set(nb, 46);
+    locals.push(lh, body); centrals.push(cd);
+    off += lh.length + body.length;
+  }
+  const cdSize = centrals.reduce((s, c) => s + c.length, 0);
+  const eo = new Uint8Array(22), c = new DataView(eo.buffer);
+  c.setUint32(0, 0x06054b50, true);
+  c.setUint16(8, files.length, true); c.setUint16(10, files.length, true);
+  c.setUint32(12, cdSize, true); c.setUint32(16, off, true);
+  return new Blob([...locals, ...centrals, eo], { type: "application/zip" });
+}
+
+/* ===== DEM の xml ===== */
+function grab(s, tag) {
+  const a = s.indexOf("<" + tag); if (a < 0) return null;
+  const b = s.indexOf(">", a), c = s.indexOf("</" + tag, b);
+  return c < 0 ? null : s.slice(b + 1, c).trim();
+}
+function parseDEM(text) {
+  const head = text.slice(0, 4000);
+  const lc = grab(head, "gml:lowerCorner"), uc = grab(head, "gml:upperCorner"), hi = grab(head, "gml:high");
+  if (!lc || !uc || !hi) return null;
+  const [lat0, lon0] = lc.split(/\s+/).map(Number), [lat1, lon1] = uc.split(/\s+/).map(Number);
+  const [hx, hy] = hi.split(/\s+/).map(Number), nx = hx + 1, ny = hy + 1;
+  if (!(nx > 1 && ny > 1)) return null;
+  const sp = grab(text.slice(-600), "gml:startPoint") || "0 0";
+  const [sx, sy] = sp.split(/\s+/).map(Number);
+  const a = text.indexOf("<gml:tupleList>"); if (a < 0) return null;
+  const body = text.slice(a + 15, text.indexOf("</gml:tupleList>", a));
+  const z = new Float32Array(nx * ny).fill(NODATA);
+  let w = sy * nx + sx, i = 0;
+  const L = body.length;
+  while (i < L && w < z.length) {
+    const c = body.indexOf(",", i); if (c < 0) break;
+    let j = c + 1, sign = 1;
+    if (body.charCodeAt(j) === 45) { sign = -1; j++; }
+    let v = 0, ch = body.charCodeAt(j);
+    while (ch >= 48 && ch <= 57) { v = v * 10 + (ch - 48); ch = body.charCodeAt(++j); }
+    if (ch === 46) { ch = body.charCodeAt(++j); let f = .1;
+      while (ch >= 48 && ch <= 57) { v += (ch - 48) * f; f *= .1; ch = body.charCodeAt(++j); } }
+    z[w++] = sign * v;
+    const nl = body.indexOf("\n", j); if (nl < 0) break;
+    i = nl + 1;
+  }
+  const dev = grab(head, "devDate") || "";
+  return { lat0, lon0, lat1, lon1, nx, ny, z,
+           type: grab(head, "type") || "", devDate: (dev.match(/[\d-]{10}/) || [""])[0] };
+}
+
+/* ===== 結合 ===== */
+let G = null, CROP = null;
+function mosaic(tiles) {
+  const t0 = tiles[0];
+  const dlon = (t0.lon1 - t0.lon0) / t0.nx, dlat = (t0.lat1 - t0.lat0) / t0.ny;
+  let lon0 = Infinity, lat0 = Infinity, lon1 = -Infinity, lat1 = -Infinity;
+  for (const t of tiles) { lon0 = Math.min(lon0, t.lon0); lat0 = Math.min(lat0, t.lat0);
+                           lon1 = Math.max(lon1, t.lon1); lat1 = Math.max(lat1, t.lat1); }
+  const nx = Math.round((lon1 - lon0) / dlon), ny = Math.round((lat1 - lat0) / dlat);
+  const z = new Float32Array(nx * ny).fill(NODATA);
+  for (const t of tiles) {
+    const cx = Math.round((t.lon0 - lon0) / dlon), cy = Math.round((lat1 - t.lat1) / dlat);
+    for (let j = 0; j < t.ny; j++) {
+      const r = cy + j; if (r < 0 || r >= ny) continue;
+      z.set(t.z.subarray(j * t.nx, (j + 1) * t.nx), r * nx + cx);
+    }
+  }
+  return finish({ z, nx, ny, lon0, lat0, lon1, lat1, dlon, dlat,
+    tiles: tiles.length,
+    types: [...new Set(tiles.map(t => t.type))].filter(Boolean),
+    dates: [...new Set(tiles.map(t => t.devDate))].filter(Boolean) });
+}
+function finish(g) {
+  let zmin = Infinity, zmax = -Infinity, valid = 0;
+  for (let i = 0; i < g.z.length; i++) { const v = g.z[i]; if (v <= NODATA + 1) continue;
+    valid++; if (v < zmin) zmin = v; if (v > zmax) zmax = v; }
+  const latc = (g.lat0 + g.lat1) / 2;
+  g.mx = g.dlon * 111320 * Math.cos(latc * Math.PI / 180);
+  g.my = g.dlat * 110570;
+  g.zmin = isFinite(zmin) ? zmin : 0; g.zmax = isFinite(zmax) ? zmax : 0; g.valid = valid;
+  return g;
+}
+
+/* ===== 描画 ===== */
+let PV = { scale: 1 };
+const RAMP = [[62,104,78],[122,148,86],[190,180,112],[199,158,116],[236,234,238]];
+function draw() {
+  const MAX = 900;
+  const s = Math.max(1, Math.ceil(Math.max(G.nx, G.ny) / MAX));
+  const w = Math.max(1, Math.floor(G.nx / s)), h = Math.max(1, Math.floor(G.ny / s));
+  PV = { scale: s };
+  const cv = $("cv"); cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d"), img = ctx.createImageData(w, h), d = img.data;
+  const mx = G.mx * s, my = G.my * s, rng = Math.max(1, G.zmax - G.zmin);
+  const seaCol = getComputedStyle(document.body).getPropertyValue("--sea").trim();
+  const sc = seaCol.startsWith("#") ? [1,3,5].map(i => parseInt(seaCol.substr(i,2),16)) : [195,214,226];
+  const at = (x, y) => { x = Math.min(G.nx-1, Math.max(0, x*s)); y = Math.min(G.ny-1, Math.max(0, y*s));
+    const v = G.z[y*G.nx+x]; return v <= NODATA+1 ? null : v; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = at(x, y), o = (y*w+x)*4; d[o+3] = 255;
+    if (v === null) { d[o] = sc[0]; d[o+1] = sc[1]; d[o+2] = sc[2]; continue; }
+    const gx = ((at(x+1,y) ?? v) - (at(x-1,y) ?? v)) / (2*mx);
+    const gy = ((at(x,y+1) ?? v) - (at(x,y-1) ?? v)) / (2*my);
+    const slope = Math.atan(Math.hypot(gx, gy)), asp = Math.atan2(-gx, gy);
+    const A = Math.PI/4, AZ = Math.PI*7/4;
+    const hs = Math.max(0, Math.min(1, Math.sin(A)*Math.cos(slope) + Math.cos(A)*Math.sin(slope)*Math.cos(AZ-asp)));
+    const t = Math.max(0, Math.min(1, (v-G.zmin)/rng)) * (RAMP.length-1);
+    const i0 = Math.min(RAMP.length-2, Math.floor(t)), f = t - i0, sh = .36 + .64*hs;
+    d[o]   = (RAMP[i0][0]*(1-f) + RAMP[i0+1][0]*f) * sh;
+    d[o+1] = (RAMP[i0][1]*(1-f) + RAMP[i0+1][1]*f) * sh;
+    d[o+2] = (RAMP[i0][2]*(1-f) + RAMP[i0+1][2]*f) * sh;
+  }
+  ctx.putImageData(img, 0, 0);
+  drawContours(ctx);
+  if (CROP) {
+    const s2 = PV.scale;
+    const x = CROP.x0/s2, y = CROP.y0/s2, ww = (CROP.x1-CROP.x0)/s2, hh = (CROP.y1-CROP.y0)/s2;
+    ctx.fillStyle = "rgba(8,20,18,.5)";
+    ctx.fillRect(0,0,w,y); ctx.fillRect(0,y+hh,w,h-y-hh);
+    ctx.fillRect(0,y,x,hh); ctx.fillRect(x+ww,y,w-x-ww,hh);
+    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#0f6b63";
+    ctx.lineWidth = 1.5; ctx.strokeRect(x+.75, y+.75, Math.max(1,ww-1.5), Math.max(1,hh-1.5));
+  }
+}
+
+/* ===== 切り出し ===== */
+(function bindCrop() {
+  const cv = $("cv");
+  let on = false, sx = 0, sy = 0;
+  const toGrid = e => { const r = cv.getBoundingClientRect();
+    return [Math.round((e.clientX-r.left)/r.width*cv.width*PV.scale),
+            Math.round((e.clientY-r.top)/r.height*cv.height*PV.scale)]; };
+  cv.addEventListener("pointerdown", e => { if (!G) return;
+    on = true; [sx, sy] = toGrid(e);
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    CROP = null; draw(); e.preventDefault(); });
+  cv.addEventListener("pointermove", e => { if (!on) return;
+    const [x, y] = toGrid(e);
+    CROP = { x0: Math.max(0, Math.min(sx, x)), y0: Math.max(0, Math.min(sy, y)),
+             x1: Math.min(G.nx, Math.max(sx, x)), y1: Math.min(G.ny, Math.max(sy, y)) };
+    draw(); estimate(); });
+  cv.addEventListener("pointerup", () => { on = false;
+    if (CROP && (CROP.x1-CROP.x0 < 4 || CROP.y1-CROP.y0 < 4)) CROP = null;
+    draw(); estimate(); autoScale(); refreshContours(); });
+})();
+$("reset").onclick = () => { CROP = null; if (G) { draw(); estimate(); autoScale(); refreshContours(); } };
+
+/* ===== 見積 ===== */
+function region() {
+  const c = CROP || { x0: 0, y0: 0, x1: G.nx, y1: G.ny };
+  const step = +$("step").value;
+  return { c, step, nx: Math.floor((c.x1-c.x0)/step), ny: Math.floor((c.y1-c.y0)/step),
+           mx: G.mx*step, my: G.my*step };
+}
+function estimate() {
+  if (!G) return;
+  const r = region(), verts = r.nx*r.ny, faces = Math.max(0, (r.nx-1)*(r.ny-1));
+  const mb = (verts*26 + faces*28) / 1048576;
+  $("stepv").textContent = "1/" + r.step;
+  $("go").disabled = verts < 4;
+  const heavy = faces > 1200000;
+  $("estim").innerHTML =
+    `範囲 <span class="hi">${(r.mx*(r.nx-1)/1000).toFixed(2)} × ${(r.my*(r.ny-1)/1000).toFixed(2)} km</span>`
+    + `　格子 ${r.mx.toFixed(1)} × ${r.my.toFixed(1)} m<br>`
+    + `頂点 <span class="hi">${fmt(verts)}</span>　面 <span class="hi">${fmt(faces)}</span>　OBJ 約 ${mb.toFixed(0)} MB`
+    + (heavy ? `<br><span class="bad">面が多すぎます。Rhino が固まる恐れがあるので間引くか範囲を狭めてください。</span>` : "");
+  const c = r.c;
+  let zmin = Infinity, zmax = -Infinity, valid = 0, tot = 0;
+  for (let y = c.y0; y < c.y1; y += r.step) for (let x = c.x0; x < c.x1; x += r.step) {
+    tot++; const v = G.z[y*G.nx+x]; if (v <= NODATA+1) continue;
+    valid++; if (v < zmin) zmin = v; if (v > zmax) zmax = v; }
+  $("meta").innerHTML =
+    row("品目", G.types.join(" / ") || "—") +
+    row("タイル数", fmt(G.tiles)) +
+    row("整備年月日", G.dates.join(" / ") || "—") +
+    row("全体の格子", `${fmt(G.nx)} × ${fmt(G.ny)}`) +
+    row("格子間隔", `${G.mx.toFixed(2)} × ${G.my.toFixed(2)} m`) +
+    row("切り出し", CROP ? `${fmt(r.c.x1-r.c.x0)} × ${fmt(r.c.y1-r.c.y0)}` : "全体") +
+    row("経度", `${(G.lon0+c.x0*G.dlon).toFixed(4)}–${(G.lon0+c.x1*G.dlon).toFixed(4)}`) +
+    row("緯度", `${(G.lat1-c.y1*G.dlat).toFixed(4)}–${(G.lat1-c.y0*G.dlat).toFixed(4)}`) +
+    row("標高", valid ? `${zmin.toFixed(1)} – ${zmax.toFixed(1)} m` : "—") +
+    row("陸地率", tot ? `${(100*valid/tot).toFixed(1)} %` : "—");
+}
+const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+
+/* ===== 書き出し ===== */
+function buildOBJ() {
+  const r = region(), c = r.c;
+  const zs = +$("zs").value / 10, seaMode = $("sea").value, unit = +$("unit").value;
+  const mx = r.mx*unit, my = r.my*unit, nx = r.nx, ny = r.ny;
+  const zAt = (x, y) => G.z[y*G.nx+x];
+  let seaZ = 0;
+  if (seaMode === "min") { let m = Infinity;
+    for (let y = c.y0; y < c.y1; y++) for (let x = c.x0; x < c.x1; x++) {
+      const v = zAt(x, y); if (v > NODATA+1 && v < m) m = v; }
+    seaZ = isFinite(m) ? m : 0; }
+  const ox = $("org").value === "center" ? (nx-1)*mx/2 : 0;
+  const oy = $("org").value === "center" ? (ny-1)*my/2 : 0;
+  const parts = [];
+  parts.push(`# 基盤地図情報 数値標高モデル → OBJ\n`
+    + `# ${G.types.join(" / ")}  整備 ${G.dates.join(" / ")}\n`
+    + `# 経度 ${(G.lon0+c.x0*G.dlon).toFixed(6)}〜${(G.lon0+c.x1*G.dlon).toFixed(6)}`
+    + ` / 緯度 ${(G.lat1-c.y1*G.dlat).toFixed(6)}〜${(G.lat1-c.y0*G.dlat).toFixed(6)}\n`
+    + `# 格子 ${nx} x ${ny}  間隔 ${r.mx.toFixed(2)} x ${r.my.toFixed(2)} m`
+    + `  単位 ${unit === 1 ? "m" : "mm"}  標高倍率 ${zs}\n`
+    + `# X=東 Y=北 Z=標高\no terrain\n`);
+  const valid = new Uint8Array(nx*ny);
+  let buf = [];
+  for (let j = 0; j < ny; j++) {
+    const gy = c.y0 + j*r.step, yv = ((ny-1-j)*my - oy).toFixed(3);
+    for (let i = 0; i < nx; i++) {
+      const v = zAt(c.x0 + i*r.step, gy), ok = v > NODATA+1;
+      valid[j*nx+i] = ok ? 1 : 0;
+      buf.push("v ", (i*mx - ox).toFixed(3), " ", yv, " ", ((ok ? v : seaZ)*zs*unit).toFixed(3), "\n");
+    }
+    if (buf.length > 200000) { parts.push(buf.join("")); buf = []; }
+  }
+  parts.push(buf.join("")); buf = [];
+  const holes = seaMode === "hole";
+  for (let j = 0; j < ny-1; j++) {
+    for (let i = 0; i < nx-1; i++) {
+      if (holes && !(valid[j*nx+i] && valid[j*nx+i+1] && valid[(j+1)*nx+i] && valid[(j+1)*nx+i+1])) continue;
+      const a = j*nx + i + 1;
+      buf.push("f ", a, " ", a+1, " ", a+nx+1, " ", a+nx, "\n");
+    }
+    if (buf.length > 200000) { parts.push(buf.join("")); buf = []; }
+  }
+  parts.push(buf.join(""));
+  return { text: parts.join(""), nx, ny, step: r.step };
+}
+$("go").onclick = async () => {
+  const btn = $("go"); btn.disabled = true;
+  const label = btn.textContent;
+  try {
+    btn.textContent = "書き出しています…"; say("OBJ を組み立てています。"); await yield_();
+    const o = buildOBJ();
+    const base = `dem_${CROP ? "crop" : "full"}_${o.nx}x${o.ny}_step${o.step}`;
+    say("zip に収めています。"); await yield_();
+    const blob = await zipFiles([{ name: base + ".obj", data: o.text }]);
+    await deliver(base + ".zip", blob);
+    say(`${base}.zip を保存しました。展開して Rhino の Import で読み込んでください。`);
+  } catch (e) {
+    const code = e && e.code;
+    if (code === "declined") say("保存を取り消しました。");
+    else if (code === "rate_limited") say("保存の確認が開いています。閉じてからもう一度どうぞ。", true);
+    else if (code === "too_large") say("ファイルが大きすぎます。間引くか範囲を狭めてください。", true);
+    else say("書き出せませんでした：" + ((e && e.message) || e), true);
+  } finally { btn.textContent = label; estimate(); }
+};
+let _dl;
+async function claudeDownloads() {
+  if (_dl !== undefined) return _dl;
+  try { _dl = (window.claude && window.claude.use) ? await window.claude.use("downloads") : null; }
+  catch (_) { _dl = null; }
+  return _dl;
+}
+async function deliver(filename, blob) {
+  const dl = await claudeDownloads();
+  if (dl) { await dl.save({ filename, data: blob }); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+
+/* ===== 読み込み ===== */
+async function collect(files) {
+  const xmls = [], q = [];
+  for (const f of files) q.push({ name: f.name, buf: await f.arrayBuffer() });
+  while (q.length) {
+    const it = q.shift();
+    if (/\.zip$/i.test(it.name)) {
+      let es; try { es = await unzip(it.buf); } catch (e) { continue; }
+      for (const e of es) {
+        if (/\.zip$/i.test(e.name)) q.push({ name: e.name, buf: await inflate(e) });
+        else if (/\.xml$/i.test(e.name)) xmls.push({ entry: e });
+      }
+    } else if (/\.xml$/i.test(it.name)) xmls.push({ buf: it.buf });
+  }
+  return xmls;
+}
+async function load(files) {
+  prog(0); say("ファイルを開いています…");
+  let xmls;
+  try { xmls = await collect(files); }
+  catch (e) { say("読み込めませんでした：" + e.message, true); return; }
+  if (!xmls.length) { say("DEM の xml が見つかりませんでした。", true); prog(0); return; }
+  say(`xml ${xmls.length} 件を解析しています…`);
+  const dec = new TextDecoder("utf-8"), tiles = [];
+  let skipped = 0;
+  for (let i = 0; i < xmls.length; i++) {
+    try {
+      const t = parseDEM(dec.decode(xmls[i].buf || await inflate(xmls[i].entry)));
+      if (t) tiles.push(t); else skipped++;
+    } catch (_) { skipped++; }
+    if (i % 4 === 0) { prog((i+1)/xmls.length); await yield_(); }
+  }
+  prog(1);
+  if (!tiles.length) {
+    say("標高データとして読めるファイルがありませんでした。このページは数値標高モデル専用です。", true);
+    return;
+  }
+  const sizes = new Set(tiles.map(t => t.nx + "×" + t.ny));
+  if (sizes.size > 1) {
+    say(`格子の大きさが混在しています（${[...sizes].join(", ")}）。同じ品目のデータだけを読み込んでください。`, true);
+    return;
+  }
+  G = mosaic(tiles); CROP = null;
+  $("srctag").textContent = `${tiles.length} タイル読み込み済み`;
+  draw(); estimate(); autoScale(); refreshContours(true);
+  say(`${tiles.length} タイルを結合しました。${skipped ? `（${skipped} 件は DEM ではないため除外）` : ""}`
+    + ` 標高 ${G.zmin.toFixed(1)}〜${G.zmax.toFixed(1)} m。`);
+  setTimeout(() => prog(0), 900);
+}
+
+/* ===== 入力 ===== */
+const picker = document.createElement("input");
+picker.type = "file"; picker.multiple = true; picker.accept = ".zip,.xml"; picker.id = "picker";
+picker.hidden = true; document.body.appendChild(picker);
+picker.onchange = e => { const f = [...e.target.files]; picker.value = ""; if (f.length) load(f); };
+$("drop").onclick = () => picker.click();
+["dragenter","dragover"].forEach(ev => document.addEventListener(ev, e => {
+  if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+  e.preventDefault(); $("drop").classList.add("hot"); }));
+["dragleave","drop"].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault(); if (ev === "dragleave" && e.relatedTarget) return;
+  $("drop").classList.remove("hot"); }));
+document.addEventListener("drop", e => {
+  const f = [...(e.dataTransfer ? e.dataTransfer.files : [])].filter(x => /\.(zip|xml)$/i.test(x.name));
+  if (f.length) load(f);
+  else if (e.dataTransfer && e.dataTransfer.files.length) say("zip か xml を入れてください。", true);
+});
+$("step").oninput = estimate;
+$("zs").oninput = e => { $("zsv").textContent = "×" + (e.target.value/10).toFixed(1); };
+$("sea").onchange = $("org").onchange = $("unit").onchange = estimate;
+
+/* ===================== 等高線 ===================== */
+
+/* --- 平滑化：欠損を巻き込まない重み付きぼかし --- */
+function blurPass(a, nx, ny, r, horiz) {        // 移動和：窓幅によらず一定コスト
+  const out = new Float32Array(a.length);
+  if (horiz) {
+    for (let j = 0; j < ny; j++) {
+      const b = j * nx; let s = 0;
+      for (let k = 0; k <= r && k < nx; k++) s += a[b + k];
+      out[b] = s;
+      for (let i = 1; i < nx; i++) {
+        const add = i + r, rem = i - r - 1;
+        if (add < nx) s += a[b + add];
+        if (rem >= 0) s -= a[b + rem];
+        out[b + i] = s;
+      }
+    }
+  } else {
+    for (let i = 0; i < nx; i++) {
+      let s = 0;
+      for (let k = 0; k <= r && k < ny; k++) s += a[k * nx + i];
+      out[i] = s;
+      for (let j = 1; j < ny; j++) {
+        const add = j + r, rem = j - r - 1;
+        if (add < ny) s += a[add * nx + i];
+        if (rem >= 0) s -= a[rem * nx + i];
+        out[j * nx + i] = s;
+      }
+    }
+  }
+  return out;
+}
+
+/* --- 内陸の欠損を埋める：外周からつながる欠損だけを「海」とみなす --- */
+function fillHoles(src, nx, ny) {
+  const n = src.length, no = i => src[i] <= NODATA + 1;
+  const sea = new Uint8Array(n), st = [];
+  const seed = i => { if (no(i) && !sea[i]) { sea[i] = 1; st.push(i); } };
+  for (let i = 0; i < nx; i++) { seed(i); seed((ny - 1) * nx + i); }
+  for (let j = 0; j < ny; j++) { seed(j * nx); seed(j * nx + nx - 1); }
+  while (st.length) {
+    const p = st.pop(), x = p % nx, y = (p - x) / nx;
+    if (x > 0) seed(p - 1);
+    if (x < nx - 1) seed(p + 1);
+    if (y > 0) seed(p - nx);
+    if (y < ny - 1) seed(p + nx);
+  }
+  const out = Float32Array.from(src);
+  let todo = [];
+  for (let i = 0; i < n; i++) if (no(i) && !sea[i]) todo.push(i);
+  const holes = todo.length;
+  for (let pass = 0; pass < 300 && todo.length; pass++) {
+    const next = [];
+    for (const p of todo) {
+      const x = p % nx, y = (p - x) / nx;
+      let s = 0, c = 0;
+      const t = q => { if (out[q] > NODATA + 1) { s += out[q]; c++; } };
+      if (x > 0) t(p - 1); if (x < nx - 1) t(p + 1);
+      if (y > 0) t(p - nx); if (y < ny - 1) t(p + nx);
+      if (c) out[p] = s / c; else next.push(p);
+    }
+    if (next.length === todo.length) break;
+    todo = next;
+  }
+  return { z: out, holes };
+}
+function smoothGrid(src, nx, ny, r) {
+  if (r < 1) return src;
+  let v = new Float32Array(src.length), w = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i++) {
+    const ok = src[i] > NODATA + 1; v[i] = ok ? src[i] : 0; w[i] = ok ? 1 : 0;
+  }
+  for (let p = 0; p < 2; p++) {
+    v = blurPass(v, nx, ny, r, true);  w = blurPass(w, nx, ny, r, true);
+    v = blurPass(v, nx, ny, r, false); w = blurPass(w, nx, ny, r, false);
+  }
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i++)
+    out[i] = src[i] <= NODATA + 1 ? NODATA : (w[i] > 0 ? v[i] / w[i] : src[i]);
+  return out;
+}
+
+/* --- マーチングスクエア：セルごとに交差する標高だけを走査 --- */
+function marchAll(z, nx, ny, levels) {
+  const nL = levels.length, L0 = levels[0];
+  const dL = nL > 1 ? levels[1] - levels[0] : 1;
+  const HV = nx * ny;                       // 縦の辺の番号は HV だけずらす
+  const PX = [], PY = [], A = [];
+  for (let k = 0; k < nL; k++) { PX.push(new Map()); PY.push(new Map()); A.push(new Map()); }
+  const add = (k, ka, ax, ay, kb, bx, by) => {
+    PX[k].set(ka, ax); PY[k].set(ka, ay);
+    PX[k].set(kb, bx); PY[k].set(kb, by);
+    const a = A[k];
+    let la = a.get(ka); if (la === undefined) { la = []; a.set(ka, la); } la.push(kb);
+    let lb = a.get(kb); if (lb === undefined) { lb = []; a.set(kb, lb); } lb.push(ka);
+  };
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const o = j * nx + i, o2 = o + nx;
+      const a = z[o], b = z[o + 1], c = z[o2 + 1], d = z[o2];
+      let lo = a, hi = a;
+      if (b < lo) lo = b; if (b > hi) hi = b;
+      if (c < lo) lo = c; if (c > hi) hi = c;
+      if (d < lo) lo = d; if (d > hi) hi = d;
+      let k0 = Math.ceil((lo - L0) / dL), k1 = Math.floor((hi - L0) / dL);
+      if (k0 < 0) k0 = 0; if (k1 > nL - 1) k1 = nL - 1;
+      for (let k = k0; k <= k1; k++) {
+        const L = levels[k];
+        const cs = (a > L ? 1 : 0) | (b > L ? 2 : 0) | (c > L ? 4 : 0) | (d > L ? 8 : 0);
+        if (cs === 0 || cs === 15) continue;
+        const kT = o, kB = o2, kL = HV + o, kR = HV + o + 1;
+        const tx = i + (L - a) / (b - a), ty = j;
+        const bx = i + (L - d) / (c - d), by = j + 1;
+        const lx = i, ly = j + (L - a) / (d - a);
+        const rx = i + 1, ry = j + (L - b) / (c - b);
+        switch (cs) {
+          case 1: case 14: add(k, kL, lx, ly, kT, tx, ty); break;
+          case 2: case 13: add(k, kT, tx, ty, kR, rx, ry); break;
+          case 3: case 12: add(k, kL, lx, ly, kR, rx, ry); break;
+          case 4: case 11: add(k, kR, rx, ry, kB, bx, by); break;
+          case 6: case 9:  add(k, kT, tx, ty, kB, bx, by); break;
+          case 7: case 8:  add(k, kL, lx, ly, kB, bx, by); break;
+          case 5: {                                   // 左上と右下が上
+            if ((a + b + c + d) / 4 > L) { add(k, kT, tx, ty, kR, rx, ry); add(k, kL, lx, ly, kB, bx, by); }
+            else { add(k, kL, lx, ly, kT, tx, ty); add(k, kR, rx, ry, kB, bx, by); }
+            break; }
+          case 10: {                                  // 右上と左下が上
+            if ((a + b + c + d) / 4 > L) { add(k, kL, lx, ly, kT, tx, ty); add(k, kR, rx, ry, kB, bx, by); }
+            else { add(k, kT, tx, ty, kR, rx, ry); add(k, kL, lx, ly, kB, bx, by); }
+            break; }
+        }
+      }
+    }
+  }
+  const M = 2 * HV + 2;
+  return A.map((a, k) => traceLines(PX[k], PY[k], a, M));
+}
+function traceLines(PX, PY, A, M) {
+  const used = new Set(), out = [];
+  const ek = (x, y) => x < y ? x * M + y : y * M + x;
+  const walk = start => {
+    const line = []; let cur = start;
+    while (cur !== undefined) {
+      line.push([PX.get(cur), PY.get(cur)]);
+      let next;
+      const nb = A.get(cur);
+      if (nb) for (let i = 0; i < nb.length; i++) {
+        const e = ek(cur, nb[i]);
+        if (used.has(e)) continue;
+        used.add(e); next = nb[i]; break;
+      }
+      cur = next;
+      if (cur === start) break;
+    }
+    return line;
+  };
+  const allUsed = (s, nb) => { for (let i = 0; i < nb.length; i++) if (!used.has(ek(s, nb[i]))) return false; return true; };
+  for (const [s, nb] of A) {
+    if (nb.length !== 1 || allUsed(s, nb)) continue;
+    const l = walk(s); if (l.length > 1) out.push({ pts: l, closed: false });
+  }
+  for (const [s, nb] of A) {
+    if (allUsed(s, nb)) continue;
+    const l = walk(s); if (l.length > 2) out.push({ pts: l, closed: true });
+  }
+  return out;
+}
+
+/* --- 単純化と面積 --- */
+function simplify(pts, tol) {
+  const n = pts.length;
+  if (n < 3 || tol <= 0) return pts;
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1;
+  const st = [[0, n - 1]];
+  while (st.length) {
+    const [s, e] = st.pop();
+    if (e - s < 2) continue;
+    const [x1, y1] = pts[s], [x2, y2] = pts[e];
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    let md = -1, mi = -1;
+    for (let i = s + 1; i < e; i++) {
+      const [x, y] = pts[i];
+      const dd = len === 0 ? Math.hypot(x - x1, y - y1)
+                           : Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1) / len;
+      if (dd > md) { md = dd; mi = i; }
+    }
+    if (md > tol) { keep[mi] = 1; st.push([s, mi], [mi, e]); }
+  }
+  const out = [];
+  for (let i = 0; i < n; i++) if (keep[i]) out.push(pts[i]);
+  return out;
+}
+function ringArea(pts) {
+  let s = 0;
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % n];
+    s += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(s) / 2;
+}
+
+/* --- 設定 --- */
+const SM_WORDS = ["なし", "ごく弱", "弱め", "やや強め", "強め", "かなり強", "最大"];
+function scaleDen() { return +$("scale").value; }
+function interval() {
+  if ($("ivmode").value === "manual") return Math.max(.1, +$("ivman").value || 1);
+  return +$("thick").value * scaleDen() / 1000;
+}
+function contourOpts() {
+  const den = scaleDen(), iv = interval();
+  return { den, iv,
+    smooth: +$("sm").value,
+    minArea: +$("ma").value / 10,          // mm^2
+    tol: +$("tl").value / 20,              // mm
+    k: 1000 / den };                       // 実寸 m -> 模型 mm
+}
+
+/* --- 抽出本体：模型 mm 座標のポリラインを標高ごとに返す --- */
+function buildContours(preview) {
+  const o = contourOpts();
+  const r = region(), c = r.c;
+  const W = c.x1 - c.x0, H = c.y1 - c.y0;
+  const s = preview ? Math.max(1, Math.ceil(Math.max(W, H) / 380)) : 1;
+  const nx = Math.floor(W / s), ny = Math.floor(H / s);
+  if (nx < 2 || ny < 2) return null;
+  let src = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++)
+    for (let i = 0; i < nx; i++)
+      src[j * nx + i] = G.z[(c.y0 + j * s) * G.nx + (c.x0 + i * s)];
+  const filled = fillHoles(src, nx, ny);
+  src = filled.z;
+  const rad = Math.max(0, Math.round(o.smooth / s));
+  src = smoothGrid(src, nx, ny, rad);
+  let zmin = Infinity, zmax = -Infinity;
+  for (let i = 0; i < src.length; i++) { const v = src[i];
+    if (v <= NODATA + 1) continue; if (v < zmin) zmin = v; if (v > zmax) zmax = v; }
+  if (!isFinite(zmin)) return null;
+  const k0 = Math.ceil(zmin / o.iv), k1 = Math.floor(zmax / o.iv);
+  const levels = [];
+  for (let k = k0; k <= k1; k++) levels.push(+(k * o.iv).toFixed(4));
+  if (!levels.length) return { levels: [], sets: [], s, cellX: G.mx * s, cellY: G.my * s, o, nx, ny };
+  if (!preview && levels.length > 400) throw new Error("層が多すぎます（" + levels.length + " 枚）。間隔を広げてください。");
+  const seaFill = levels[0] - o.iv;
+  const z = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i++) z[i] = src[i] <= NODATA + 1 ? seaFill : src[i];
+  const raw = marchAll(z, nx, ny, levels);
+  const cellX = G.mx * s * o.k, cellY = G.my * s * o.k;   // 1格子あたりの模型 mm
+  const sets = raw.map(lines => {
+    const out = [];
+    for (const ln of lines) {
+      let pts = ln.pts.map(([x, y]) => [x * cellX, (ny - 1 - y) * cellY]);
+      pts = simplify(pts, o.tol);
+      if (pts.length < 2) continue;
+      if (ln.closed && ringArea(pts) < o.minArea) continue;
+      if (!ln.closed && pts.length < 3) continue;
+      out.push({ pts, closed: ln.closed });
+    }
+    return out;
+  });
+  return { levels, sets, s, o, nx, ny,
+           sizeX: (nx - 1) * cellX, sizeY: (ny - 1) * cellY, zmin, zmax };
+}
+
+/* --- プレビュー --- */
+let CPREV = null, cTimer = null;
+function drawContours(ctx) {
+  if (!CPREV || !$("showc").checked || !CPREV.sets.length) return;
+  const { sets, s, o } = CPREV;
+  const c = CROP || { x0: 0, y0: 0, x1: G.nx, y1: G.ny };
+  const ny = CPREV.ny;
+  const px = (mmx, mmy) => [
+    (c.x0 + (mmx / (G.mx * s * o.k)) * s) / PV.scale,
+    (c.y0 + (ny - 1 - mmy / (G.my * s * o.k)) * s) / PV.scale];
+  ctx.save();
+  ctx.lineWidth = .7; ctx.lineJoin = "round";
+  sets.forEach((lines, k) => {
+    ctx.strokeStyle = (k % 5 === 0) ? "rgba(255,252,245,.92)" : "rgba(28,40,36,.45)";
+    ctx.beginPath();
+    for (const ln of lines) {
+      ln.pts.forEach((p, i) => { const [x, y] = px(p[0], p[1]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      if (ln.closed) ctx.closePath();
+    }
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+function refreshContours(now) {
+  clearTimeout(cTimer);
+  const run = () => {
+    if (!G) return;
+    try { CPREV = buildContours(true); } catch (_) { CPREV = null; }
+    draw(); contourEstimate();
+  };
+  if (now) run(); else cTimer = setTimeout(run, 160);
+}
+function contourEstimate() {
+  if (!G) return;
+  const o = contourOpts(), r = region();
+  const mmW = r.c.x1 - r.c.x0 > 0 ? (r.c.x1 - r.c.x0 - 1) * G.mx * o.k : 0;
+  const mmH = (r.c.y1 - r.c.y0 - 1) * G.my * o.k;
+  $("scv").textContent = "1 / " + fmt(o.den);
+  $("thv").textContent = $("thick").value + " mm";
+  $("ivv").textContent = (o.iv < 1 ? o.iv.toFixed(2) : o.iv.toFixed(o.iv % 1 ? 1 : 0)) + " m";
+  $("smv").textContent = SM_WORDS[+$("sm").value];
+  $("mav").textContent = o.minArea.toFixed(1) + " mm² 未満";
+  $("tlv").textContent = o.tol.toFixed(2) + " mm";
+  $("ivnote").textContent = $("ivmode").value === "auto"
+    ? `板厚 ${$("thick").value} mm ＝ 実寸 ${o.iv < 1 ? o.iv.toFixed(2) : o.iv} m 分の高さになります。`
+    : "";
+  if (!CPREV) { $("cest").textContent = ""; return; }
+  const layers = CPREV.levels.length;
+  const paths = CPREV.sets.reduce((s, x) => s + x.length, 0);
+  const modelH = (CPREV.zmax - CPREV.zmin) * o.k;
+  const many = layers > 200;
+  $("cest").innerHTML =
+    `模型 <span class="hi">${mmW.toFixed(0)} × ${mmH.toFixed(0)} mm</span>`
+    + `　高さ ${modelH.toFixed(0)} mm<br>`
+    + `層数 <span class="hi">${fmt(layers)} 枚</span>　輪郭 約 ${fmt(paths)} 本`
+    + `（下絵は粗く表示しています）`
+    + (many ? `<br><span class="bad">層が多すぎて切り出しが大変です。板を厚くするか縮尺を小さくしてください。</span>` : "");
+  $("cgo").disabled = layers === 0;
+}
+
+/* --- DXF --- */
+function buildDXF(C) {
+  const L = [], put = (c, v) => { L.push(c, v); };
+  const name = lv => "EL_" + (lv < 0 ? "-" : "") + Math.abs(lv).toFixed(1).padStart(7, "0");
+  put(0, "SECTION"); put(2, "HEADER");
+  put(9, "$ACADVER"); put(1, "AC1015");
+  put(9, "$INSUNITS"); put(70, 4);                    // 4 = ミリメートル
+  put(0, "ENDSEC");
+  put(0, "SECTION"); put(2, "TABLES");
+  put(0, "TABLE"); put(2, "LTYPE"); put(5, "5"); put(100, "AcDbSymbolTable"); put(70, 1);
+  put(0, "LTYPE"); put(5, "14"); put(100, "AcDbSymbolTableRecord"); put(100, "AcDbLinetypeTableRecord");
+  put(2, "CONTINUOUS"); put(70, 0); put(3, "Solid line"); put(72, 65); put(73, 0); put(40, 0);
+  put(0, "ENDTAB");
+  put(0, "TABLE"); put(2, "LAYER"); put(5, "2"); put(100, "AcDbSymbolTable"); put(70, C.levels.length);
+  C.levels.forEach((lv, i) => {
+    put(0, "LAYER"); put(5, (0x200 + i).toString(16).toUpperCase());
+    put(100, "AcDbSymbolTableRecord"); put(100, "AcDbLayerTableRecord");
+    put(2, name(lv)); put(70, 0); put(62, [1, 2, 3, 4, 5, 6, 30][i % 7]); put(6, "CONTINUOUS");
+  });
+  put(0, "ENDTAB"); put(0, "ENDSEC");
+  put(0, "SECTION"); put(2, "ENTITIES");
+  let h = 0x1000;
+  C.levels.forEach((lv, k) => {
+    for (const ln of C.sets[k]) {
+      put(0, "LWPOLYLINE"); put(5, (h++).toString(16).toUpperCase());
+      put(100, "AcDbEntity"); put(8, name(lv));
+      put(100, "AcDbPolyline"); put(90, ln.pts.length); put(70, ln.closed ? 1 : 0); put(43, 0);
+      for (const p of ln.pts) { put(10, p[0].toFixed(4)); put(20, p[1].toFixed(4)); }
+    }
+  });
+  put(0, "ENDSEC"); put(0, "EOF");
+  const out = [];
+  for (let i = 0; i < L.length; i += 2) out.push(String(L[i]), "\n", String(L[i + 1]), "\n");
+  return out.join("");
+}
+
+/* --- SVG --- */
+function buildSVG(C) {
+  const W = C.sizeX, H = C.sizeY;
+  const p = [];
+  p.push(`<?xml version="1.0" encoding="UTF-8"?>\n`);
+  p.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(2)}mm" height="${H.toFixed(2)}mm" `
+       + `viewBox="0 0 ${W.toFixed(3)} ${H.toFixed(3)}">\n`);
+  p.push(`<title>基盤地図情報 等高線 1/${C.o.den} 間隔${C.o.iv}m</title>\n`);
+  p.push(`<g fill="none" stroke="#000" stroke-width="0.1" stroke-linejoin="round">\n`);
+  C.levels.forEach((lv, k) => {
+    if (!C.sets[k].length) return;
+    p.push(`<g id="EL_${lv.toFixed(1)}" data-elevation="${lv}">`);
+    for (const ln of C.sets[k]) {
+      const d = ln.pts.map((pt, i) => (i ? "L" : "M") + pt[0].toFixed(3) + " " + (H - pt[1]).toFixed(3)).join(" ");
+      p.push(`<path d="${d}${ln.closed ? " Z" : ""}"/>`);
+    }
+    p.push(`</g>\n`);
+  });
+  p.push(`</g>\n</svg>\n`);
+  return p.join("");
+}
+
+/* --- 書き出し --- */
+$("cgo").onclick = async () => {
+  const btn = $("cgo"), label = btn.textContent;
+  btn.disabled = true;
+  try {
+    btn.textContent = "抽出しています…"; say("等高線を抽出しています。少し時間がかかります。"); await yield_();
+    const C = buildContours(false);
+    if (!C || !C.levels.length) { say("この範囲に等高線が引けませんでした。", true); return; }
+    const paths = C.sets.reduce((s, x) => s + x.length, 0);
+    const o = C.o;
+    const tag = `1-${o.den}_${o.iv}m`;
+    if ($("cfmt").value === "svg") {
+      say("SVG を組み立てています。"); await yield_();
+      const svg = buildSVG(C);
+      await deliver(`contour_${tag}.svg`, new Blob([svg], { type: "image/svg+xml" }));
+      say(`contour_${tag}.svg を保存しました。${C.levels.length} 層 / ${fmt(paths)} 本。`);
+    } else {
+      say("DXF を組み立てています。"); await yield_();
+      const dxf = buildDXF(C);
+      const readme =
+        `基盤地図情報 数値標高モデル から作成した積層模型用の等高線\r\n` +
+        `------------------------------------------------------------\r\n` +
+        `模型の縮尺        1/${o.den}\r\n` +
+        `板の厚み          ${$("thick").value} mm\r\n` +
+        `等高線の間隔      ${o.iv} m（実寸）\r\n` +
+        `層数              ${C.levels.length} 枚（${C.levels[0]} m 〜 ${C.levels[C.levels.length-1]} m）\r\n` +
+        `輪郭の本数        ${paths}\r\n` +
+        `模型の大きさ      ${C.sizeX.toFixed(1)} × ${C.sizeY.toFixed(1)} mm\r\n` +
+        `模型の高さ        ${((C.zmax - C.zmin) * o.k).toFixed(1)} mm\r\n` +
+        `図面の単位        ミリメートル（実寸ではなく模型寸法）\r\n` +
+        `レイヤー名        EL_ + 標高（m・小数1桁）\r\n` +
+        `平滑化            半径 ${o.smooth} 格子\r\n` +
+        `線の単純化        ${o.tol.toFixed(2)} mm\r\n` +
+        `切り捨てた島      ${o.minArea.toFixed(1)} mm² 未満\r\n` +
+        `------------------------------------------------------------\r\n` +
+        `各標高が別レイヤーに入っています。切り出す前にレイヤーごとに\r\n` +
+        `板の上へ配置し直してください。\r\n` +
+        `出典：国土地理院 基盤地図情報 ダウンロードサービス\r\n`;
+      const blob = await zipFiles([
+        { name: `contour_${tag}.dxf`, data: dxf },
+        { name: `README.txt`, data: readme }]);
+      await deliver(`contour_${tag}.zip`, blob);
+      say(`contour_${tag}.zip を保存しました。${C.levels.length} 層 / ${fmt(paths)} 本。`);
+    }
+  } catch (e) {
+    const code = e && e.code;
+    if (code === "declined") say("保存を取り消しました。");
+    else if (code === "rate_limited") say("保存の確認が開いています。閉じてからもう一度どうぞ。", true);
+    else if (code === "too_large") say("ファイルが大きすぎます。間隔を広げるか範囲を狭めてください。", true);
+    else say("等高線を書き出せませんでした：" + ((e && e.message) || e), true);
+  } finally { btn.textContent = label; btn.disabled = false; }
+};
+
+/* --- 配線 --- */
+$("ivmode").onchange = () => {
+  $("ivman").classList.toggle("hide", $("ivmode").value !== "manual");
+  if ($("ivmode").value === "manual") $("ivman").value = interval();
+  refreshContours(true);
+};
+let scaleTouched = false;
+$("scale").onchange = () => { scaleTouched = true; refreshContours(true); };
+["thick", "cfmt"].forEach(id => $(id).onchange = () => refreshContours(true));
+/* 範囲が変わったら、模型が机に載る大きさになる縮尺を選び直す（手動で選んだあとは触らない） */
+function autoScale() {
+  if (scaleTouched || !G) return;
+  const r = region();
+  const longest = Math.max((r.c.x1 - r.c.x0) * G.mx, (r.c.y1 - r.c.y0) * G.my);
+  const dens = [...$("scale").options].map(o => +o.value).sort((a, b) => a - b);
+  const pick = dens.find(d => longest * 1000 / d <= 700);
+  $("scale").value = String(pick || dens[dens.length - 1]);
+}
+$("ivman").oninput = () => refreshContours();
+["sm", "ma", "tl"].forEach(id => $(id).oninput = () => { contourEstimate(); refreshContours(); });
+$("showc").onchange = () => draw();
+
+/* ===== サンプル（伊豆大島・実データを約1/19に粗くしたもの） ===== */
+const SAMPLE_B64 = "8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2CgALgAjAPHY8djx2PHY8djx2PHY8dgSAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2BQAOQBGACkA8djx2PHY8djx2BIAMABUAD0A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AUADwAxACkAHgAUABEAEwAaAC4AOABEAEcAMwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgEAAoADAApACMAHAAaABoAGwAZABkAHQA0AEIAPQA2APHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYAgAIAAwADQAbAB0AHAAfAB4AHgAhAB8AHQAsAEkASQA7ACEA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCQANABAAEwAUABUAGAAbACEAKAAqACoAKQApADcAOgBFAEIARAA7AEgAUAATAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AsAEgAUABYAFgAWABwAIQAjACsALAAtAC0ALQAtADAAMgA+AEoAVABVAFoAWgA+APHY8djx2PHY8djx2PHYAwAEAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYAwALABEAFAAWABcAGAAfACMAJAApACsALgAvADAAMAAxADMANAA2ADsAUwBZAGEAWgBSACQA8djx2PHY8djx2PHY8dgDAAQA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AQACAAMABEAFQAXABgAHAAgACMAIwAnACoALgAwADIANQA2ADgAOgA7ADwAPgBKAFkAWwBTAEwAMQDx2PHY8djx2PHY8djx2AQABADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgEAAsADwAYABkAFAAXABkAHQAiACMAIwAnACoAKwAuADEANAA2ADgAOgA8AD4AQABFAFcAWwBUAFEATAA1ADIALgAgAPHYAwDx2PHYBAAFAAQA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgLABIAFQAUABUAFQAXABoAHwAkACMAJQAnACkALAAvADEAMwA1ADgAOgA9AD8AQgBKAE4AVQBZAFUAUQBHAE8AWQBjAFAAIAAXABcAEgARABUALgAqAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgMABUAFgAXABsAKQAnAB0AIwAkACQAJQAnACgAKwAvADEANAA1ADgAOwA+AEEARABHAEsAUABSAFQAVgBVAFkAYwB2AHwAcgBkAFAAMwAmADYAUwBSADEAMQA1ACMAIQASAPHYDwAJABAA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQAPABUAFgAaABwAHgAkACEAJQAlACQAKAApACoALAAvADEANAA3ADoAPQBAAEMARgBJAEwATwBSAFQAVwBbAGQAbwB+AH8AcABPADsAMAA1AEkAXwBaAD4ATwBEADQAPAAoAB8ASQBDAE8AHgDx2PHY8dgOAA8ABgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCAAOABIAFgAZABsAHQAhACQAJgAlACUAKgAsACwALgAyADYAOQA6ADoAPgBCAEQARwBLAE8AUgBVAFcAWABbAGMAcwB9AHIAZQBWAEEAQABGAGEAawBVAFIAYQBHAEYAMwAjAEIAaQBxAGwAUgApABUAIAAaABYADwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCgAQABUAGAAaABwAHgAiACYAJgAmACoALQAvADAANAA4ADsAPQA+AD0AQQBFAEgASgBQAFcAWQBZAFwAXQBfAGcAaABzAHMAaABXAFEATABnAHUAcQBpAGYAXgBjAEYAVQA6AFYAgwCHAG4ASgAuACsAKgAgABgAEgAJAAQA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgGAAkADwATABUAGAAaABwAHQAjACYAJgAmACkALgAxADQANwA7AD4AQQBCAEQARABJAE4AUQBXAFwAXgBeAF8AYQBjAGYAZwBrAHMAaQBmAGgAWABxAIYAgQB7AHYAbQBlAF8AdwBNAHMAiwB+AFIAOABFAFMARwAwABwAGQATAAoABwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBAAKAAwADwASABMAFgAZABwAHgAlACYAJgAmACYALgAyADYAOgA+AEEAQwBGAEkASQBMAFMAVwBZAF8AYQBjAGUAZgBnAGkAaQBwAHIAcQByAHgAcwB6AI4AlACKAIIAegB0AHwAfwB5AIsAfQBcAFUAaAByAGsAZABaACwAIwAbABYAFAAOAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBwANAA4ADwARABQAFgAZABwAIQAlACYAJgAnACoAMQA0ADgAPABAAEQARwBKAEwATgBQAFYAWwBfAGEAZQBoAGoAawBsAG0AbABwAIsAgAB7AIMAjgCWAKIAqgCbAJkAhQCTAJMAjQCYAJYAdQByAIAAhwCHAIEAeQBYAEEARgBCACMAIQAfABQAEgAQAPHYDQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBwAPABEAEgATABUAGAAcAB4AJAAlACYAJwArAC8AMgA2AD4AQgBEAEcASwBNAFAAUgBUAFkAXgBjAGYAaQBtAHEAcQByAHMAdQCCAJUAlQCLAIwAlwCfAKkAsAC0AKsAogClAKMApACiAKgAoQCbAJQAkACNAIwAcwBUAGYAdwB9AEQALQApACAAIAAfAB0AHAASAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQAMABAAEwAUABcAHQAgACIAJQAlACYAKQAsADAANAA4AD8AQwBHAEwAUABSAFcAVwBaAGAAZgBoAGwAbgB0AHYAeAB5AHkAfQCOAJ4ApwCrAKEApQCmAK4AsgC4ALsAtwC1ALgAvQC2ALcAswCnAKIAngCYAJAAbgCAAJYAqACmAHsATAA2ACkAKQAsACoAJwAoAB8A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBwAMABEAEwAVABkAHgAiACUAJgAlACgAKgAxADMANQA4ADwAQABIAFQAWwBgAF8AYQBkAGkAbgBwAHcAegB9AH0AfQB9AHsAfQCLAKUArQC0ALQAsgC1ALYAuQC6AL0AvAC8AMAAzgDOAL4AuwC4ALMAtAC0AKYAjwCdAMgAvQCeAH8AYgBPAEEAQAA4ADgAMgAxACgAGQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCgAOABIAFgAZABsAHgAjACcAJwAnACsALQA3ADkAOQA7AD8AQwBPAGAAZQBoAGkAagBsAHEAcwB3AIEAhQCGAIQAhQCKAJYAmgCjAK0AtAC5ALsAuwC8AL4AwADAAMIAwwDEAMkA0wDWANAAyQDFAMYAyADTAMQAugC+ANQAwQC3AJkAfgB9AH8AeABhAFoAQwA7ADMAKAAOAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCAAOABIAGAAdAB4AIQAmACgAJwAqAC8AMAA0ADsATwBZAFgAXgBiAGQAagBuAHIAcwB3AHgAegB/AIYAiwCOAJMAkgCVAJ4ApACmAKwAtAC6AL8AwQDEAMQAxQDFAMYAxgDIANEA1wDaANYA0QDWANQA2QDeAN4A3gDeAOEA3ADTALIAmwCpAKcAogCUAGcASAA5ADAAKAAfABUA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYDgAXABoAGwAdAB8AIwApACgAKAAsAC8AMgA0ADkASgBfAGkAeABxAGoAbQBzAHYAewB+AIEAgwCGAIoAjwCYAJ0AnwCfAKIApACnAKwAsgC6AMEAxQDIAMkAyQDJAMoAygDOANIA2gDcANsA3QDjAOEA4ADhAOMA5QDlAOMA4ADcAMwAwwDAAMAAwACqAHkATAA7ADQAMwAtACIAFgAIAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYDgAcAB0AHQAfACMAJwAqACkAKwAuADIANAA3ADgAPQBDAFAAYQBrAGsAcQB2AHwAgACDAIYAiwCOAJEAmQChAKYAqQCqAKkAqgCsAK0AsQC8AMQAygDMAM4A0gDQAM8AzwDVANkA3ADgAOAA5QDnAOoA6QDlAOgA6ADnAOUA6QD+APgA5gDbANcAzgC7AJoAYwBCADwANwAxACYAHAAYABAA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgOABkAHAAiACcAKQApACoALAAvADMANgA5AD0AQABDAEgATwBaAGsAdgB6AH8AhgCLAIwAkACUAJkAogCnAKwAsACxALIAsQCxALIAtgDBAMoAzgDQANQA2QDXANoA3ADhAOcA6wDrAOkA7QDsAO0A7wDrAOsA7ADqAOoA9AAWAQkB9ADXANEAwACmAI4AZgBQAD8ANgAvAC0AMAAsABwADwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgLABEAFQAeACMAJgAlACkAMQA0ADQANwA8AEAARABIAEsAUQBZAGcAdgB9AIIAiQCPAJMAlQCYAKEAqQCwALQAtgC3ALkAuAC2ALgAwADKAM4A1ADYANwA4gDlAOgA6QDtAPYA+AD5APYA8gDwAPIA8wDxAPMA8wDxAO0A8AACAQMB5wDYANUAzgC/AJwAhwBxAE4AQAA/AFMATgBGADMAIgAbABAA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AsAEgAYAB0AIQAjACkAPgBQAD8APQBCAEYASgBQAFEAVQBbAGUAdQCBAIgAjQCSAJcAmwCgAKoAtgC7ALsAvQC8AL8AvgDAAMQAygDTANYA3gDiAOgA6wDwAPEA9AD4AP0AAQH/AP8A/AD4APcA+QD3APgA+AD3APIA8ADuAOgA5QDkAN4A1ADFALcAqgCCAGsAWwBdAGYAXQBWAEoANgAvACAA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AgADwAVABgAHwAjADAATQBpAE0AQwBHAEwAUgBXAFoAXQBfAG8AhQCVAJwAlwCZAJ8AowCrALQAvQDDAMMAwwDEAMcAyADNANMA1gDbAOEA5gDqAPEA9QD2APoA/wACAQQBBwEIAQcBBQEDAf8A/gD8APwA/AD6APcA9ADxAO0A6gDmAN8A1gDUANgAugCcAI0AeAB5AHIAZgBdAFEAQQA6ADIAGADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AUACQAMAA8AFAAXACkASABKAEMARQBLAFIAVgBaAF4AYgBnAHcAjQCcAKIAnwCjAKsArwCyALoAwQDJAMoAyQDNAM8A0wDWAN0A4gDnAOsA8wD1APcA+wD+AP8ABAEIAQsBEAEQAQ8BDgEJAQUBBAEDAQAB/wD+APwA+AD1APAA6QDjAOQA3wDcANUAwACzAKMAkACCAIIAcQBiAFUATABHAD8ALQAXAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AQABwAJAAwADgATAB8AKQAvADoAQQBQAF8AYwBhAGUAbAByAHYAgwCXAKQApQCtALUAtwC8AMAAxQDOANAA0wDYANsA3gDiAOcA7QDxAPwAAQEEAQQBAwEHAQoBCQENARABFAEXARcBFQEPAQwBDAEIAQgBBQECAQEBAgEBAf0A8gDqAOQA4QDcANUAzACrAJsAkwCQAIoAfwBvAGAAVwBQAEQANQAhAAwA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AYACQALAA0ADwAVABsAIAAqADgARgBXAGcAbABtAHMAeAB8AH8AggCQAKcAsQC4ALwAwADJAMgAxADPANUA2gDhAOcA7gDxAPMA9wD/AAkBEwEVARIBDwESARIBEwETARkBHAEhASMBHAEUARUBEQEOAQwBCQEIAQcBBgEEAQEB/wDzAO4A5gDaAMwAxADLAMUAtQCoAJ4AkQCDAG4AXABSAEkAPgAvABkA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYAgAFAAgACwANAA4AEAAXAB0AIgAoADMARQBdAG4AbgByAHkAgACFAIoAjwCZAKgAuwDDAMIAyQDOANIA1gDTANgA4wDrAPMA+gD+AAEBBAEMARgBHgEfAR8BHwEfAR4BHwEeAScBKgEqASkBIwEhAR4BHAEXARQBEQENAQ0BCgEJAREBFQEOAQoBAAHlAOQA4wDpANsA0AC9ALAApACTAHwAZgBUAEkAQAAxABwADADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AEABQAHAAoADAAPABEAEwAZACAAJgAuADYARABfAGkAcAB1AHwAhwCSAJYAoACnAKkAtADIANIA1ADVANkA3ADaAN4A6wDzAPgA/gAFAQoBDwEaASIBMAExASwBLwEsATEBMwE5ATcBNgE2ATMBLwEoAScBJAEhAR0BGAEVARQBEgENARgBMQEwAR4BCgH9AAUB/wDzAOwA4wDUAMYAvgCrAJYAcgBSAEYAOwAwACUAEQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AEABgAIAAsAEAATABQAFQAcACQALQAzADoAQgBWAGUAdAB7AIQAigCTAJ4AqwCxALIAvADJANgA4QDgAOEA5gDnAOsA8wD+AAYBCQESARUBHgEoATUBOQE/AUABQQFKAUkBTQFSAUUBPgE+ATsBNgExAS4BKwEnASEBHAEaARsBFgESARcBIwEmASABGAEQARIBCwH7APMA7QDpAOUA2wDFALAAhQBYAEwARgA4ACoAEwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AIABwAJAA4AFQAXABkAGgAdACQALQA1AD0ARABRAGAAbwB7AIMAiQCRAJ4ArAC2ALwAyQDPANoA6QDtAPUA+gD9AAMBDgEbAS8BHAEiAScBKgEyAT0BRQFJAVQBVwFbAVkBWwFhAVIBSgFKAUUBPgE9ATgBNQEsASUBIQEjASEBGwEZARsBHAEhASYBGAEYARgBEgEAAf8A/QADAfwA7ADWAMgAqQBnAFIASgBAAC8AHgAQAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AIABwAKAA4AFQAZABsAHgAgACgALwA3AD8ASQBVAGEAawB1AHsAgwCPAKQAsAC4AMkA1ADYAOAA6gD1AP4AAwELARgBHAEpAUEBLQErATQBPQFGAUoBTQFXAWsBcQFoAWwBbAFxAWcBXwFdAVgBVgFPAUUBPwE1ATEBMQExATABMAEtASUBMgEzASIBHgEdAR4BHQESARQBFgEVAQ0B+wDoANQAuwCBAF4AUgBJADwAKQAQAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AQACAALAA8AEwAaAB4AIQAlACsAMQA5AEAASQBWAF4AZQBtAHgAgwCPAJ0AqwC2AMMA2ADgAOYA8QD+AAYBCgEQARgBIQE0AT8BPwFAAU8BUQFXAVwBaQF5AXgBgAF9AXwBegF6AXgBbAFsAW4BaAFfAVYBUAFJAUgBQgE9AUEBQgFIAUgBVQEzASkBKAEwAS8BJwEkAScBJAEeARcBBgHxANQAtwCUAG0AXgBVAEcAMwAZAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCAAMABEAFAAZACEAJgAqAC4AMwA5AEEASABRAFgAYgBuAHgAggCOAJkApQC1AMoA1QDeAOQA8QAIARoBGwEXAR8BKwE2AUcBUwFTAVUBXwFlAW8BeQGEAYUBhwGMAYsBigGJAYQBfgF7AXsBeQFwAWcBYwFbAVsBWwFXAVQBVAFcAXQBWQFAAUABSwFCATwBMQE4ATgBLQElARsBDwH8AOMAxQCbAHoAawBeAFAAOgAiAA4A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBwAMABQAFgAbACMAKgAvADEANAA6AD8ASABOAFkAZABxAHkAgQCNAJkApgCwAMAA0QDeAOsA+AAHARoBIAEhASgBNQFFAU8BXQFeAWIBbAF0AYMBjQGYAZYBlwGZAaMBoQGiAZkBkwGMAYcBhAF+AX4BdwFwAWkBbQFoAWIBYwF4AYwBaQFYAWkBVQFRAUQBRAFHAUQBOgEtASIBGQEEAewAzACkAIoAfQBpAFQAPQAhABMA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQAIABIAGAAbACEAJAAsAC8AMQA1ADsARABKAFYAZABvAHsAhQCOAJkAowCuAL4AzQDgAPQACAEVAR4BKQEwAToBSAFVAV4BZQFtAXIBiAGSAZYBoAGpAasBrwGvAbYBtwGxAawBogGWAY4BiQGJAYgBhgGDAXwBdgFzAW8BcAGHAYQBdgF0AWwBYwFgAVcBWAFTAU0BQgE0AScBHwELAewAyAC0AKQAkAB9AGkAUgA2ABwACgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYAwAIAA4AFwAbAB4AIQAlACkALAAzADkAQABKAFoAZwByAHsAggCKAJQAnQCsAL0A0ADhAPcADgEbASQBLgE8AUgBUwFcAWwBdQGCAZgBrQGxAa0BswG/AcYByAHLAcYBxgHCAbkBrwGmAZwBlQGQAY8BjwGPAYoBiAGLAYABfQGCAYgBggF4AWsBZQFfAV0BXAFXAVABRAE+AS8BIgESAfMA4gDQALsArACVAHcAVwBBACsAEQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgHAAwAFQAZABwAIAAkACcALAAzADsAQABJAFQAYwBvAHoAgwCMAJUAnACoALwAywDdAOsABQEbASoBNwFHAVQBYQFtAXQBeQGFAaYBywHVAcUBxAHUAd4B2gHeAdgB1wHRAc0BygHAAa4BowGjAaUBnwGZAZYBmwGNAYcBggGDAYIBfgF3AXABaQFlAWQBYgFhAVkBTAFDATYBKgEeAQgB8QDeAMwAugChAHwAWAA8ADQAGwAEAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgGAA0AEgAXABoAHgAiACkALgAzAD0AQwBKAFIAXABoAHMAfgCIAJgAnwCoALgAxwDWAOcA/gAdATgBQQFRAWgBdQF+AYQBhQGMAaMByAHeAdsB3QHjAe4B7wHrAeMB5AHhAeAB3gHPAcQBuQG1AbgBqAGiAaQBoQGbAZQBjgGPAYsBgwF7AXQBcQFwAW8BbAFlAVsBWQFPAUEBOgEwARoBAQHuAN0AyQCyAI4AawBMACwAGwACAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AsAEgAWABoAHgAjACoAMAA3AD4ARQBMAFIAWwBmAHMAfQCGAJUAoQCqALMAxwDZAOcA/AApAT8BXAFqAXkBhwGRAZoBngGhAawBxwHmAe0B7QHvAfgBAQL7AfMB7wHrAekB6AHjAeAB1gHIAcIBuAGwAa8BrgGrAaoBpwGfAZcBiwGDAYABegF4AXYBcwFoAWMBXwFXAVABRgE2AR8BBwHwANwAywC+AJgAiAB0AC0ADwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AkAEQAWABsAHwAjACoAMQA4AD8ARgBOAFQAXABkAG0AeQCDAI4AmQCoAL0AxwDYAOgA/gAaAUQBaQGKAY8BlAGeAagBrgG1AcABzwHmAfUB/AEBAgMCDAIKAgIC/QH2AfMB7gHrAeABzQHIAcYBwgG+AbkBtgGxAa0BqAGfAZkBkQGNAYkBhAF7AXkBdQFuAWoBZQFfAVoBTwE8ASYBEgH8AOcA2gDFALgAnACGAD4ACQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AYADAASABgAHQAhACgALwA4AD4ARgBPAFYAXABlAG4AeACBAIkAkQCqANgA5QDyAAMBCwElAUcBYwGCAZIBpgGuAboBvwHBAdIB5AHwAf8BAwIKAg0CDQIPAgwCCQL3AegB3QHZAdUB0AHNAcgByAHFAcABuQG4AbQBrgGnAaABmgGVAY0BhgGAAX0BfQF3AXABcAFpAWIBUQFGATkBKwEWAf8A6wDkAM8AsAChAFsAFQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AQACAAPABYAHAAiACgALwA4AEAARgBMAFUAXABlAG0AcgB6AIUAkACwAOIAEAEdASwBOAFBAV4BdQGMAaMBtQHDAdMB2wHfAeYB8wH5Af8BCAINAhUCFwIUAg0C5wHbAdkB2gHWAdQB0wHRAc0ByQHJAccBwwHBAboBswGqAaABmwGYAZEBiwGGAYIBfwF8AXgBcwFrAV8BWAFQAUcBPQEuARcBCAEBAd0AwwCzAH8AfABBAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQAPABYAHgAnAC0AMwA5AD0AQwBIAFAAWQBgAGgAbAB4AH4AjwCrANoABwEpATsBSwFjAV4BgQGaAbABxwHWAeQB6gHzAf8BAgIFAgYCCQITAhcCGwIOAucB3gHdAdwB2gHUAdIBzwHPAc4BzAHNAcwBygHFAb8BtwGxAaIBnQGaAZQBjwGLAYYBgwGAAX4BcgFqAWUBXwFZAVIBRwE6AS0BFwH+APIA1gClAJMAvwByACUA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQANABYAHgAmACwAMwA3ADkAQQBHAE0AVQBcAGIAZwB5AJIAmACjAMgA7gAiAUoBaQFsAX0BgQGeAbYBzQHiAegB9QH6AQkCDwIPAhACEgITAhgCHQL2AeQB4QHgAd4B2wHYAdYB0gHTAdMB0gHRAc0ByQHGAcEBvQG0AaoBoQGdAZ0BlwGPAYgBhQGAAXgBdAFxAWwBZwFhAVkBUAFHATkBKQEdAQkB7QDCANIA5wCUADYA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBgAQABcAGwAhACYAKgAwADcAPgBGAE8AUwBaAF8AaACAAKEAtADBANgA8wAXAT0BawGLAZMBmgGsAcAB2gHpAewB+AEJAhcCGgIWAhkCGwIbAh0CBgLqAegB3wHcAdwB3AHcAdwB2gHWAdYB1QHUAc8BygHFAcMBwQG6AbIBqwGmAaEBmgGTAY0BhAF+AXoBdgF1AW4BZgFfAV8BWAFPAUcBOQExASIBFQHzAPgAAAG2AFcABQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBAALABQAFgAcACUAKwA0ADkAPgBDAEwATwBZAGUAcAB+AJEApAC2AM8A5QD9ACMBVAGDAa4BuQG3AdAB4wH2AfgBAAIOAhsCIwIeAiECIwIjAh8C9wHuAeoB5QHhAd8B4QHjAeEB4AHcAdkB1wHUAc8ByQHGAcUBwgG+AbkBtQGuAaUBnAGWAZQBiwGBAX0BegF1AW0BaQFoAWQBYAFYAUsBRgFEAT0BLgEnASUBBQGyAEsADQAGAAYA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYAgAGAA4AFQAeACYALgA3ADsAPwBFAE4AVwBeAGgAdACDAJIAowC+AN0A+gAEAR0BRgFxAakBzQHWAdwB7wEDAg8CFgIeAiMCJAImAikCKgIjAgkC9wHwAe0B6wHrAecB5gHlAeMB4gHfAdsB2AHSAc0BygHKAcgBxwHCAb4BuQGxAacBngGgAZ8BlQGMAYIBfQF2AXQBcgFvAWsBZAFcAVcBXAFXAU8BUQFHASkB5wCiAEgAGgAUABAADgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgEAAwAEgAXAB8AKQAyADsAPwBEAEoAVgBfAG0AdwCDAJQApQC6ANIA8gAUATABUAGAAbcB3wHwAfAB/gEPAhcCJQItAiwCLAIoAhYCDAIHAgMC/gH6AfUB8gHuAeoB5wHlAeMB4QHeAdsB2QHXAdMBzwHNAcsByQHFAcABvQG2Aa0BqgGnAaABlwGOAYcBgQF7AXgBdAFsAWoBZQFlAWkBZAFiAWMBWwFHASEB0QChAFUAKAAaABsAGgAPAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgBAAQACwAUAB0AIwAsADMAOgBEAEwAWABkAHMAggCPAKEAtQDKAOAA9gAYAUoBbgGNAb4B6wEJAgYCGAIhAiUCLwIfAgwCDAIMAg0CCwINAgsC/wH8AfgB9QHxAe0B6QHlAeUB5AHfAd4B3gHeAdkB1QHTAdABzAHGAcEBvgG8AbgBswGqAZ0BkgGPAYoBgwGCAX4BeAF2AXYBcQF2AXQBbgFsAWUBWQFDARQB2gCuAGcAPgApACUAJQAfABAA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQASAB0AIwAtADUAPwBKAFIAXQBpAHcAhACOAJ0AugDfAPwAEwExAVUBdgGcAcYB9gEZAiICJQIuAi8CJAIOAg4CDwIPAhACEQIRAg8CAgL7AfkB9wH0Ae4B6wHpAegB5AHhAeEB4gHhAdoB2AHXAdIBzQHIAcIBvwG+Ab0BuQGvAaUBngGWAY8BiwGIAYEBfAGFAYIBfQF+AXQBawFkAV0BTAEuAfAAvACjAHUAUQA/ADMALwAnABUA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgIABwAKAA3AD8APgBKAFUAYQBtAH8AkwCkAKcAwgDmAAgBKgFKAW0BjwGfAbsB+QEiAjYCPAI+AhsCDQIQAhQCFAIUAhMCEwISAg8CCQIAAv0B+wH4AfUB8QHtAekB5wHoAekB6QHnAd0B2AHVAdEBzAHGAcIBwAG+Ab0BvQG3AbABowGaAZUBkAGLAYgBhgGHAYsBiQGDAXYBaQFbAVUBRQEfAfAA2ACwAIMAaABQAD0AMQAoABsA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgWACcANQA9AEUATQBRAFkAZwBxAH8AlgC2AM8A3gABAS4BPgFRAXoBpAHGAc4B9gEhAkQCSAIsAg8CDwISAhQCFAIUAhQCFAIUAhECCQIDAgMCAQL/AfkB9QHvAewB7wHvAewB6gHnAeQB2gHVAdABzAHJAcQBvgG8AbsBvAG4Aa4BpAGeAZcBkgGRAYkBgQF+AXwBegF0AXIBagFbAT8BHAEIAfMA2AC8AJIAZgBPAEEALwAlAB8A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dggACgANgBBAEwAVQBcAF8AZQB3AIgAkwCsAM0A/QAtAVkBdwGAAY0BsgHYAfQB/wESAjsCPAISAhACEAIPAhQCFAIUAhUCFAIUAhACEQIOAg8CCQIBAv0B+QH1AfQB9QHzAfAB6wHoAeQB3gHXAc8BzAHGAcIBvQG7AbgBuAG1Aa0BqwGkAZ0BlgGPAYsBhwGEAX8BeAFxAW4BYgFFAScBGgEGAfkA5wDLAJ4AbwBNAD4ANAAlABQA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgaADAANwBAAEkAWQBkAGsAcQBxAH0AkACyAM8A9QAmAVMBigGqAbwBvwHgAf8BFQIlAiwCGwIRAhACDwIOAhMCFQIUAhYCFwIcAhkCHAIfAhwCEAIHAgMC/wH7Af0B+gH4AfUB8AHsAekB3QHWAdIBzAHGAb8BuwG5AbcBtQG2AbMBrwGmAZ8BmgGSAZIBkAGKAYQBfAF2AXABaAFXATgBHwELAfwA6ADGAJUAagBTAEMAMwAeAA0A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgUACkAMgBAAEkAWgBqAHQAfwCNAJMAmwC1AMoA4wADAS8BYgGQAcYB6AH7ARMCKAIvAhMCEgISAhECEQIUAh4CHAIeAh4CJQItAjICOQI1AiQCFgINAggCBwIHAgICAAL+AfoB9QHwAeoB4gHbAdQBywHBAbwBuQG3AbYBtAG0AbIBrgGmAZ4BlgGTAZIBkAGJAYIBewFzAWwBaAFaAT8BJQEMAeQAxgCtAIAAXwBFADAAIAAVAAwA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgZACMAKgA2AEQAWQBpAHQAhgCVAKcAvgDRAOgAAwEXATkBYgGNAbgB5QECAh8CJgIZAhMCEwITAhUCFwIgAiwCMQIyAi8CMQI1Aj0CQgI5AioCHwIWAhICFQIQAgoCBwIEAv4B+AHyAesB5QHdAdEByAHAAbwBuQG1AbUBswGwAa8BqQGoAaEBmgGWAZQBkAGGAX0BdgF2AWsBXwFVAUgBOwETAfcA6AC7AHUAOwAwAB8AGAAOAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgWACYAMwA7AEMAXABvAHkAhQCZALEAygDkAP4AEAEuAUwBbgGQAbEB2gH8ASMCHQITAhQCFQIVAhcCIgIpAjACNwI5AjwCPAI8AkICRAJIAjoCLgIlAiECHQIYAhYCEgIMAgUC/gH3Ae8B5QHbAdIByQHCAbsBuAG0AbIBsQGxAasBpgGjAZ4BmwGYAZIBjAGCAXoBdgFvAW0BYAFWAVABPwEUAecAwgCUAFwALQAfABgAEgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgJABcAKgA3AEcAWQBqAHMAfgCTAKoAvgDPAOcAAAEfAT4BWwF9AaYB1AH/ASICFQIVAhgCGAIXAhoCIgIrAjUCPAJAAkQCTwJOAkYCTAJXAlMCQwI1AjACKAIiAh4CGwIYAhcCDQIBAvQB6AHcAdEBxwG/AboBtgGzAbABrgGqAagBpgGiAZwBkwGLAYUBgAF7AXQBbgFoAWIBXwFUAUoBJwH2AMsAuQDDAIIALQAYABEA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgRABoAKAA4AEYAWwBqAHgAhQCUAKQAuQDTAOsACAEoAUUBaAGQAbYB4QEPAh4CFAIXAhgCGQIZAhkCIwIrAjYCPAJCAkgCUgJZAlICVgJcAl0CTwJAAjgCLgInAiQCIgIjAiACFgIHAvoB7QHfAdMBygHDAb0BtgGxAa0BqwGpAaYBowGgAZ0BmQGTAY8BiAGCAXsBdAFuAWsBYgFdAVMBRAESAeIAuwCmAIcAMgASAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYDQAUACAALwBBAE0AZgB2AIUAkQCjALIAxQDfAPoAFgE0AUsBbQGWAb4B5wETAhQCFAIXAhgCGgIZAhsCHQIkAjECPAJFAk8CUwJWAlsCXgJeAlsCUQJDAjgCLwIrAikCKwIuAi8CKAIZAgkC9wHpAd0B1AHMAcMBugGzAa4BqQGoAaoBqgGqAaMBnQGUAY0BiAGAAXoBcwFvAWkBYQFeAVYBPwEMAdcArwCWAF4ALgANAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AkAEwAYACIAMQBHAFsAXQBxAIAAjwCkALgAzQDkAAMBIQE8AVUBdAGYAb4B7AEaAhkCFgIWAhgCHAIbAh4CIgIlAjACPAJKAlYCYQJmAm4CdgJuAmkCYAJUAkYCPAI6AjgCNwI4Aj4CPAIsAhkCBwL2AekB3gHUAcwBwgG4AbEBrAGuAawBqAGkAZ4BlQGQAYgBggF8AXcBdQFuAWcBXgFSAUkBOAEJAfIA5gDGAH4AMQANAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBAAHAA8AGgApADcARABRAGIAXwBtAHwAjgChALIAxADfAPwAHAE3AVABdQGfAcMB6gEVAh0CGAIZAhsCHwIdAiACJQIrAjcCRAJWAm8CiAKPApACkAKSAo8CiwJ4AmcCXQJVAkwCRgJEAkcCTAI5AiQCEgICAvUB6wHeAdEByAG+AbUBsQGvAbEBsgGtAaMBmgGVAZABhwF+AXcBcAFnAV8BWQFWAVYBSgEYAfQA1AC2AIYAPAAPAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBAAMABIAIAAvAD8ASwBXAGEAbAB0AH0AjQCgALUAxADaAPcAEAEmAT0BWQGIAa8B2QEDAiACGAIZAhsCIAIeAiACJwIuAjoCSgJoAo0CowKoAqkCpwKpArgCsAKgAo0CegJqAl4CVgJQAlICWQJJAjYCIwISAgQC9QHlAdgBzAHCAbsBtgG0AbQBsQGrAaQBnQGUAY4BiQGCAXgBbwFpAWUBYQFcAU4BOAH6AMgAoQCCAGcARgAqAA0A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBAAQABkAJgAxADUAOwBJAF4AbAB9AI0AnQCrALwAzgDeAPcAEQEmAUEBZAGNAaoBzAH4ASACGwIZAhoCIQIgAiMCLAI4AkUCWwKEAqQCrAKuAq4CrQKqAq0CwALFAq8CkwJ+Am0CYwJcAl8CbwJfAkwCOAIiAg0C+gHpAdoBzgHFAb4BugG5AbYBrwGoAZ8BmAGRAYsBhQF9AXYBcAFqAWMBWgFRAUkBOgEDAdkA0AC7AIwAYQA+ABMA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBgAQABkAHwAoADEAPQBNAFoAaQB+AI4AmQCsAMUA2gDkAPEACwEnAUsBagGGAagByQHwASACKgIdAh0CHgIiAicCLQI7Ak0CbAKZAq0CrQKqApcCkwKuAq0CrwLaAsoCqAKLAnMCaAJlAmwChgJ5AmACRgIsAhYCAQLvAd4B0gHKAcQBwAG9AbcBrwGlAZ8BmgGVAYwBggF9AXkBdgFsAWQBWwFcAVUBTQE5ARkB+ADUAK8AewA+ABgA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBwAUABkAJwAzAD4AQwBJAFsAZwB+AJIApwC4AMIAzwDfAO8ACwEkAT0BVQF2AZkBvQHmARECMwItAiECIQIjAikCLgI7AlICeAKjArACqwKeAi0CFAJ3Aq4CsgLgAskCpQKHAnUCbQJsAnMClQKFAmcCSwIyAhoCBQLzAeQB2AHPAcoBxQHBAbkBsgGsAacBmgGQAYgBhwF+AXUBbQFpAWABWQFVAVABRQEYAd8AsQCKAG4AYABIABAA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCwAbACIAJwAuADkARABMAFoAaQB9AI8ApACyAMQA1gDoAPoACgEjATUBTwFfAXYBmgHEAeoBGQI9AioCIgIkAigCMQI9AlMCeAKmArACsQKQAiUCDQJYArECuwLUArYCmAKDAncCcQJuAnYCjAKBAmYCSgIxAhoCBwL3AekB3QHVAdEBzwHGAbwBswGqAaEBnQGYAYwBgQF8AXQBcwFqAV0BVgFSAU0BRQEGAdoAxQC0AJUAmABOAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYEgAhACoANQA7AEQARwBPAFwAbgCCAJYApgC2AMUA0QDeAO8A/gARASgBLwE9AVwBgQGfAc8BAwItAjwCJAIkAikCLwI7AlECdAKiAr4CvgLMAocCTgKaAsACyAK7AqACiAJ8AnUCcgJxAnICdgKAAmsCTQIyAhsCCAL5Ae0B5QHgAeAB1gHIAbsBsQGqAaUBmwGRAY4BigGAAXcBbQFoAWUBVwFPAUcBPwE4ATEBGgHiAOQAwwBGAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYEQAfACoANgA/AEYAUABcAGYAcACAAIoAmwCmALcAxADNANwA6gD9AAcBGgEyAUkBYwGMAbYB4QEQAjcCKgIkAigCLwI6AkwCawKUAroCwwLTAuIC2QLZAs4CtgKeAokCfgJ3AnQCcgJwAnICdAKEAm4CUAI3AiECEAICAvwB9AHtAeAB0wHHAcEBuQGvAaQBmgGTAYwBiwGFAYEBegFxAWsBZAFgAVIBRQE7ATsBMwEoASkB4wBxABUA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYFAAoAC0ANwA+AEYATwBWAGAAZgBwAH4AkgCjAKwAsADAANIA4QDvAAQBFwEuAUkBYAGEAasBzwHwARYCLAIpAioCMQI7AkgCXwKAAqMCuQK/Ar8CvgKzAqACkgKGAn0CeAJ1AnMCcgJxAnICdQKFAnMCWQJAAisCHAIXAg8C/wHuAdwB0wHEAboBsgGpAagBoQGWAYgBgQF5AXcBcgFpAWIBVwFPAUgBSAFCATYBLwElASgB8ACYAE8AGwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYGwAvADgAPgA/AEYAUQBcAGMAagBxAH4AiACWAKgAtwDDANMA6QD7AAYBHQEtATwBVgFwAY0BrgHSAfcBCgIeAisCMAI/AksCVwJsAn4ChwKIAoUCgwKCAoICfwJ7AngCdgJ1AnQCcwJzAnICdwKOAoECZwJOAjwCLgIgAhECAwL0AekB1gHKAb8BtwGuAagBogGaAZQBhgF6AW4BawFqAWEBWwFVAVIBPAE0ASgBKQEoAQ4B7gChAE0AEQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYFgAtADUAQQBKAFQAWgBiAGoAcgB+AI0AkwCeAKkAtQDIAN4A8AD6AAwBGgEkATgBRAFVAXIBmQG8AdUB5wH9AQkCDwImAj8CVQJeAmQCZwJpAm0CcQJ1AncCeQJ4AnYCdAJzAnQCdAJzAnoCkQKhAokCcAJZAkECKgIbAhICCgL9AewB3QHQAcMBuAG0AasBnwGaAY8BiQGDAXoBeAFxAWgBYgFaAVIBPgEzASoBIgEbAQcB6wC7AHgANwANAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYGgArADgARQBRAFQAWQBeAGYAbgB7AIgAkgCbAKUAswDDANIA4ADsAPgAAAEZASYBLgFFAV4BgwGiAbYBzQHfAd4B6gH/ARUCNQJPAlcCXgJjAmcCawJwAnMCcwJ1AnQCdAJzAnMCdAJ+AqICugKiAokCcwJfAkUCOQIrAhoCCAL3AekB3gHTAcgBuwGtAaIBnAGWAY8BjAGEAX4BdAFtAWcBZwFeAU8BQAEyASUBHAEEAdoA2ACxAHIAMQAnABMA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYGgAzAEkAUQBPAFMAXwBoAHMAeQCEAJAAmACeAKYAtADBANAA2QDbAOoAAgELAQ0BJgE6AVsBdAGJAZ8BswG9AcEByQHgAfsBFAIfAkECWAJkAmgCawJtAm4CbgJxAnICcwJ0AoYCpAK2AsoCugKbAoACcQJeAkgCNQIoAhsCBgLxAeQB2wHSAcQBuAGvAaoBngGYAZABigGFAXcBaAFjAWEBXQFcAVABQwExARkBBQHzAL4AkgB0AFcATQA/ACIA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYFgA7AEkAUwBZAFcAWgBkAHYAfQCGAI4AmQCjAKwAtAC4AMAAygDYAOEA8AD9AA4BIwE4AU0BYQFzAYgBmgGlAacBrwHHAd4B5gEMAh0CNQJbAnMCgAKAAnQCcAJyAncCewKJAqYCvwLIAtcCvAKaAngCZAJaAkgCOwIgAgsC/wHsAeAB2gHPAccBvQG5Aa4BnAGNAYUBfwF7AXkBcQFkAVcBUgFTAUwBRAE1ASABCQHsAM8AsACbAIUAbQBFACYABgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgfAEEASwBPAGEAagBvAG8AfgCHAJQAmQCdAKUAswDBAMwA0wDdAOQA7QD9ABIBIwEzAUMBVgFrAXkBgQGLAY4BmQGuAbcB0gHnAfYBFQIzAk0CZQJ9AoUCfQJ8AoYCigKJAokClwKgArUCrgKTAnkCYwJaAlMCQQIpAhMC/gHvAd8B0wHIAcIBtwGxAaoBnwGLAX8BcwFtAWwBZwFgAVgBUQFKAUUBQQE1AR4BCgH8ANIAtwCcAH8AaABOACoA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2B4AQABdAF8AZgBwAHoAggCKAJQAnQCmAKwArwC1AMMAzwDQANcA6QD7AAYBFAEiATQBSwFZAWMBagF0AXYBiAGSAasBtgHCAdUB7wEHAh4COgJPAmACWgJaAl0CWwJZAloCbwJ8AoACiAJ9Am4CXgJdAk8CPwIsAhgCAwLyAd4BzwHAAbcBtQGuAaIBlgGAAXsBdQFtAWUBYQFbAVcBTQFIAUABOQEoARMBBAH6AOcAwwCQAFwASABCAC8AEgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dg1AGoAdAB3AH0AgwCKAJAAlQCdAKcArwC5AMQAwwDEANQA5gDoAPUABwEaATABOgFEAVABWgFbAWQBcQGCAZABnAGtAcAB0wHgAfwBEQIoAjICLQIyAjICNwI0AjgCQgJMAlECXgJaAlkCVQJWAlgCSAIvAhsCEwL9AeoBygG3AaoBpQGjAZ4BlAGKAYEBdQFuAWgBYQFeAVkBUQFJAUMBNwEYAQEB/gDoALYAkwB0AG4AVwA5ACcADwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgRAFMAcwCBAIcAigCLAJAAmwCjAKUArQC1ALgAtwDCAMkA1ADjAPYABQEYASEBKwE4AT8BRgFGAU8BYwFuAXQBiQGeAawBtQHHAd4B8QH/AQcCAwIFAgwCEAIJAgwCFAIkAi0CNwI8AkUCSgJPAk8CSAJFAkACLgIXAvcB1AG2AaYBnQGaAZQBkQGJAYEBegFwAWsBZAFdAVoBVwFTAUYBOgElAQoB8QDOAK8ApwCVAIQAagBDACgAEQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2BwAVwB4AIEAgACHAIwAkwCbAKAApAClAKoAtQC1AMAAzgDfAPIAAQEIARMBIgEpAS0BNwExAUEBTgFVAWIBdQGCAY8BnwGvAb8B0AHTAeMB4QHkAewB8QHoAeUB8gH8AQcCGgIoAjgCNgI5AkUCVgJhAlgCPQImAgQC3wG/AawBngGTAY0BhQGCAX4BdwFwAWkBZAFkAWMBYAFhAVUBPQEWAf0A4gDOAL4AuACTAF0APgAvACUA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYDABMAHQAfQCAAIcAkgCQAI8AmAChAKQAqAC4AMMA0ADbAOcA8gD6AAkBEwEXARcBHwEYASsBNgE4AUkBXQFsAX8BjAGeAaQBsgG1AcIBygHIAcwB0QHTAc0B1QHmAfgBDgIXAiICJQIwAk8CbQJ1AmACWAI3AggC6gHHAaoBngGUAYwBiQGBAXoBeAFxAXABaQF1AYYBfAFiATsBFgH3AOoA2ADWAM0AowCHAGsAOwAXAA8A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgZAFkAdQB3AIEAhgB7AI0AlgCUAJoApwCuAL0AxADNANoA5wDpAPUA/gACAQMBAQEDARsBHwElATcBSQFcAWsBeAGGAZQBmgGdAaYBqwGwAbkBtwG+AboBxwHTAeUB9gH9AQACDAIlAjYCUgJgAlwCUAJHAhkC6gHIAasBmwGMAYcBhQGBAX0BeQF2AXEBdAGIAY0BaQFNATwBLAEmARMB+AD/ANUAwgCXAD8AEQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2CIAaAB4AHsAfAByAIIAiACIAJUAmQChAK8AtQC8AMgAzADbAOMA7ADvAPAA5gD4AAQBCAEZASgBOgFIAVkBaQF3AYABhQGIAYgBjwGZAasBpwGoAaYBrQG1AcMB2gHfAeUB8AENAh4CHgIoAjACLwIYAgAC2gG9AakBmAGOAYUBfgGBAX0BegF7AX4BhQGPAYEBcgFkAWEBXgFRASYBEQElAfwAxQBmABwA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2A8AXwBvAG8AcABmAG8AdwCEAIkAkACYAJ4ApACrALMAwgDOANQA3gDaANcA2ADtAO0A/AAJARgBJgE4AUoBVQFbAWsBbgFxAW0BcwF8AYoBiwGTAZIBlQGbAaEBtQG9AcoB1wHuAfgB/QHtAfoBAALyAeQByQGwAZ4BkwGNAYQBegF3AX0BhAGGAX0BbwF6AXgBZwFQAUgBUQFbAUYBKwFEAe8AgwApAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2B4AXwBjAGYAZABfAG8AdwB/AIMAigCMAJIAmQCjAK8AtQDAAMgAxwDDAL8A0QDRAN4A6QD1AAsBFAEnATIBQQFHAVEBUQFTAVoBXwFjAWoBcAF4AX0BeQF5AYIBjAGgAacBsQHBAcsB4QHOAcYB0AHDAbwBrgGYAZEBhgGAAYABdgFyAYYBhgF3AWoBWQFqAV4BWQFMATgBRgFTAVoBVQE9Ae0AhwAcAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgLAEIAWQBYAFcAWwBoAGwAcgB3AIAAgQB9AIgAkACaAKMApgCyALgAtACxAL0AvADFANEA2ADsAPQAAgEQAR4BKQEyATgBNAE9AUYBSAFLAUoBUwFXAVgBXQFjAWMBbAF8AYcBkAGWAZ8BqwGtAaABmAGZAY8BkgGRAY4BfwFzAWoBZgFqAW4BbAFjAWIBSQFUAVABSwE8ASsBOgFGAVABQgEZAeUAhgAgAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgWAEkAQgBQAFIAXgBiAGUAawBwAHQAcgB1AH8AfACHAJIAkwCiAKsApACnAKkApwC3AMIA1QDaAOYA7QACAQ8BDwEWARcBHAEqAScBMAEqATEBMQE5AUMBSQFNAVIBXgFxAXcBdAF2AXsBeQGCAYkBfgF3AXMBaQFwAW0BXAFRAVEBRAFDAUEBTgFPAUgBOgE7ATsBLwEfASYBQQFKAUcBIwH0AK0AUgAMAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgcADUASgBUAFYAWABaAFUAXwBnAGcAYwBsAGoAcQB/AIEAhQCYAJwAlACVAIwAmACsAL4AwgDJANUA4wDuAPIA7wD5APoABgEOARIBEwEOARABFQEfASsBOgE+AU0BTgFYAVwBWAFdAWMBVQFSAWEBYQFUAU8BTAFMAVABQQExAS4BHwElASIBMwFDATMBHwEbASEBFwELAR0BOQFMAT8BHwHVAHgALwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgbACwAMQA7AD4ASgBPAEQATABUAFkAVwBcAGIAcAB2AG8AeQCFAIoAhgCAAIYAlwCiAKAApgC2AMUAzwDXANYA1QDlAOMA6gD1APUA8QD2APAACQEgAR4BKQExAUIBLAE6AT0BPgFGAUkBQQE4ATsBQQE4ATgBLgEcAR8BIQEOARYBCQEQARoBIwExASUBBwEAAQcBAQH/AA8BJgFDASoB+wDBAHkALQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYEAAXABMAFQAXABsAJgAzADUAQABHAEYASwBTAGAAZgBnAGEAagB2AHYAeABwAHsAgwCLAIgAlQCoALIAvgC+AMEAwQDIAMYA1wDYANQA0wDcAN8A8wAQAQcBCgEkASwBDAEeASABIgEoASYBPAE1ASkBJAEdAR8BIgEQAQUBBgEHAfwAAQEFAQ0BGAEgAQsB9ADvAO0A8QACARABHgEyAe4A3ACvAFgAIADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCAAKAAkADQASABgAHQAfACYAOwAvACUAJgApADIARABJAEoAYQBlAGUAagBhAG4AcgB2AG8AiwCYAKIAqQCpAKoArgCvAK8AuAC8ALoAuwDBAMoA1ADjAPUA9AAVAREB8QD7AAEBBgEKARYBMQEpARcBGgERAQoBAwEQAQMB+wD7APMA9AD7APgAAQEHAfwA5ADaAOcA7wABAQ8BDwEkAe0AlQB1AFIAJwAMAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgJABAAEwAUAB0AHwAZABoAGgAaABwAIAAjAC8AQgBSAFoAYABYAF4AYwBdAG8AfQCKAI8AkwCWAJIAmACZAJcAoACnAKgApQCsALMAwADlAO8A3ADmAOUA3QDfAOoA6gDpAO4AAQEZAQMB+gD/APQA7QD3AAAB8gDqAOYA8gD1APEA7gDxAPEA3gDUANoA3wDsAO8A6QDrAOYAvABlADoAJgAXAAsA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCQAIAAgACwAPABEAFAAUABUAFgAeACYAMwBCAFAAVABNAFMAUABVAGkAcwB3AHoAgAB7AHsAgQCEAIcAkACTAJUAkgCaAJ4ArQDBANcA0QDQAMgAzQDOAM8A0gDTANEA3QD+AO0A2ADfAN8A3gDdAPAA7QDcANgA4gDnAOUA6QDnAOkA3ADLAM4A1gDXAM8A1QDEAMAApABQACoAHgAUABEACQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgLAAgADwAXAB8AKAAsAEEARgBDAEMAQgBMAGEAYgBlAGkAawBgAGUAcABzAHUAfQCEAIcAgQCLAJQAogC2ANIA0gDIAMEAwADDAL4AvADEALwAzwDhANAAyQDFANEA0ADOANoA1QDYANUA0wDYANsA3gDgAOQA3QDTAMMAxQDEAMEAxgC6AKAAYgAzACEAGQAVABQAFAAQAAUA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBgARABgAHAAgACsANwA8AC4AMQBAAFAAUwBUAFoAVgBLAFMAXABkAGQAaQByAHUAdQB6AIYAjACqAKoApwDKALUAtgDAALAAqwCxAK0AtQC6ALkAtwC9AMoAxAC+AMEAvwDJANAAzgDSANUA1gDaAOAA3gDYAMoAuwC8ALkAtgC2AIgAQAAoAB0AGgAaABgAFwAVABAAAwDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgFAAwAEgAXABkALAApACEAGgAbACQAOgBFAEwAQQA6AEMATABTAFAAVQBbAGIAagBvAHUAfwCgAIsAjQC0AKQAnQCwAKAAlgCZAJoAnwCgAKQApwCsALUAtACwAK4ArgC7AMQAywDPANMA4QDoAN8A0QDLAMcAtwC6ALcAsgCaAHUAOQAjACAAHgAcABsAGgAYABMADADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AEABgANAA4AEQAOABEAEgAVABgAHAAmADEAKgAmAC4APQA/AEEARABKAFQAWgBfAGEAbACGAHoAggCOAIgAhgCGAIgAhACEAIQAkACUAJoAngCjAKYApgCjAJ8AoQC2AMoAwADbAOIA+QDoAMMAugC2ALgAtgCyALAApwB/AE0ALwAmACUAIgAfAB0AGgAZABcAEQAFAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AUADAAUABcAGQAaABwAHwAjACoALwA0ADoAPABCAEYASQBOAE0ATABdAGwAcABkAGYAbgBxAG8AcAB0AHsAhQCLAJAAlwCaAJ8AngCcAJcAlAClALIArwDKAMUAxADEALoAvAC7AK8AqwCrAKkAhwBxAEMALQAsACcAIgAfABwAGgAYABMACQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgIABUAGAAXABsAHgAjACkALgAyADUAOAA9ADwAOwA9AD4APQBIAFoAVQBNAFUAWQBdAF8AYABpAHIAhACNAI8AkQCWAJYAlQCVAJIAjQCPAJcAkwCiALEAsQClALoAuACwAKwAjQCKAJ4AgQBPADgAMQAuACoAJAAgABwAGQAQAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgDAA8AEQAVABwAHwAlACkALAAvADIAMwA2ADUAMwAzADUAOABAAEUARQBIAEsAUABRAFAAWgBkAHUAnAC2AKoAjQCMAI8AjwCOAI4AiQB/AH8AfQCGAJYAlACNAI4ArACkALEAoABxAF8AaQBOADYAMgAuACsAJgAhAB4AGwAGAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AYADgAXAB0AHwAjACYAKAAqACsALgAxAC8ALgAvADMANwA7AD4APwBBAEYASABIAEkAUgBdAIQAtwDbAL4AlwCIAIIAfgB9AIEAgAB3AHAAbABsAHQAhAB+AHQAewCjAKwAiwBeAEgAQwA9ADYAMgAwAC0AKQAmACIAFQDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCQAZABwAHQAfACIAIwAkACYAKgArACoAKgAtADIANQA4ADoAOgA+AEAAQgBCAEQASQBfAI0AtADAALIAmQB/AHEAawBoAGwAdQBuAGsAaABkAGMAYgBoAHIAYgBxAJQAhwBdAEYAPwA7ADcANAAzADEALAApACcAEgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgSABkAGgAZABwAHQAfACEAIwAjACUAJwAsADEAMwA0ADUAOAA5ADsAPAA8AEAARgBhAIEAkQCPAIMAcQBmAF4AWQBYAFoAYgBpAGYAZgBhAF4AWwBYAFgAVABVAGMAZABeAE8APwA9ADkANgA1ADMAMAArACkAFADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AoAEgAUABMAFwAZAB0AIAAiACQAJAApAC4AMAAwADEANAA1ADYANwA5AD4AQQBVAGEAYwBcAFEAVQBYAE8ATgBPAFIAWQBIAD0ARABZAFgAVABTAFAATwBOAEsASQBKAEYALgAxAD4AOwA4ADUAMQAjAA4A8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgGAA4AFQAXABkAHgAiACQAJAAlACgAKwAsAC8AMQAxADIANAA3ADcANwA8AEAAPwA+AEIARwBEAEQARQBFAEwAUgAzADEAMAA2AFIATwBPAE0ATABLAEgARgBFADUACQAKAB8AOQA/ADwAMwAaAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AYACgAMAA4AFQAcACMAIwAjACQAJQApACwALgAtAC4AMwAxADIAMgAyADUANgA1ADUANgA4ADwAPQA/AEQAUQAvACwALQAtAEAASgBKAEsASQBIAEcARgBFACEA8djx2PHYFwA7ADoAMwAnAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYEAAXAB0AIAAgACEAIgAnACkAKQApACsALAAtAC4ALwAuADEAMQAwADAAMQAzADYANwA5ADwATwA+ACsAKgAoACYAKAA+AEgARwBHAEcARABDACsACADx2AQAHQA0ADMALwAmAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYCAAUABgAGgAbAB8AIAAlACYAJQAlACkAKgArACsAKwArACwALgAtACwAKgAtADAAMQAyADIAOgBHADMAIAAeACAAIgAvAEQAQwBDAEQAOwA3ADEADQDx2PHYGQAhACIAMQAgAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgOABQAFAAUABMAGwAdABwAHgAjACYAJwAoACgAKAAnACgAKQAqACkAJwApACoALAArACoALAAyADMAHAAcAB0AHwAeACYALwAwACoAJgAoACgAFgANAPHY8djx2PHYCgAIAPHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AMADAAVABYAGgAeAB8AIgAkACQAIwAjACQAJAAmACQAIgAiACMAJAAlACQAIwAkAB4AGgAcABsAGwAbABwAHwAlACcAJgAnACYAHQAUAAkA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHYBQAMAAoACgAOABQAFgAYABsAHgAbABUAFgAbAB4AGQAXABsAHAAYAA8ADwAQAAsA8dgSABsAGgAaABsAHAAdACEAJQAkACQAIgAaABQABgDx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2AYABwAKAA4AFgAOAAYA8dgMAAwACgANAA8A8djx2PHY8djx2PHY8djx2AYACwAXABwAGwAbABsAHAAdAB8AHgAcABcADADx2AMA8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8dgGABsAGgAZABgAGAAZABkAGQAYABYADADx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY";
+(function boot() {
+  const bin = atob(SAMPLE_B64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const i16 = new Int16Array(u8.buffer);
+  const N = 120, z = new Float32Array(N*N);
+  for (let i = 0; i < z.length; i++) z[i] = i16[i];
+  const d = (0.125/2250)*18;
+  G = finish({ z, nx: N, ny: N, lon0: 139.3375, lat1: 34.8,
+               lon1: 139.3375 + N*d, lat0: 34.8 - N*d, dlon: d, dlat: d,
+               tiles: 119, types: ["5mメッシュ（標高）※サンプル"], dates: ["2025-06-20"] });
+  draw(); estimate(); autoScale(); refreshContours(true);
+})();
+</script>
+
+</html>

@@ -1506,7 +1506,7 @@ function stlEstimate() {
   $("estim").innerHTML =
     `模型 <span class="hi">${s.sizeX.toFixed(0)} × ${s.sizeY.toFixed(0)} mm</span>（1/${fmt(s.o.den)}）<br>`
     + `格子 ${s.nx} × ${s.ny}（実寸 ${(s.step * G.mx).toFixed(1)} m 間隔）　三角形 ${fmt(s.tris)}　約 ${s.mb.toFixed(1)} MB`
-    + (s.sizeX > 400 || s.sizeY > 400
+    + (s.sizeX > 250 || s.sizeY > 250
        ? `<br><span class="bad">一般的な 3D プリンターの造形範囲（約 250 mm）を超えています。縮尺を小さくするか範囲を狭めてください。</span>` : "");
 }
 async function exportSTL() {

@@ -214,6 +214,7 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
               <option value="shaded">シェーディング</option>
               <option value="color">段彩</option>
               <option value="wire">ワイヤーフレーム</option>
+              <option value="photo">航空写真</option>
             </select>
             <label class="chk" for="v3terr"><input type="checkbox" id="v3terr">積層</label>
             <label class="chk" for="v3cont"><input type="checkbox" id="v3cont" checked>等高線</label>
@@ -226,12 +227,18 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
         <div class="maprow" id="row2d">
           <span>図の上をドラッグすると書き出す範囲を切り出せます</span>
           <span style="display:flex;gap:14px;align-items:center">
+            <select id="bg" aria-label="背景">
+              <option value="shade">陰影段彩</option>
+              <option value="photo">航空写真</option>
+              <option value="photoshade">航空写真＋陰影</option>
+            </select>
             <label class="chk" for="showc"><input type="checkbox" id="showc" checked>等高線を重ねる</label>
             <button id="reset" type="button">全体に戻す</button>
           </span>
         </div>
         <div class="pad" style="border-top:1px solid var(--hair)">
           <div class="meter"><i id="pbar"></i></div>
+          <p class="sub" id="photoattr" hidden style="margin:0 0 4px">航空写真：国土地理院「全国最新写真（シームレス）」（地理院タイル）</p>
           <p class="status" id="status">サンプルデータを表示しています。自分のデータを読み込むと置き換わります。</p>
         </div>
       </div>
@@ -363,6 +370,10 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
             <option value="1000">ミリメートル</option>
           </select>
         </div>
+        <div class="ctl objonly">
+          <label class="chk" for="objphoto" style="font-size:12.5px;color:var(--body)"><input type="checkbox" id="objphoto">航空写真をテクスチャとして付ける（obj＋mtl＋jpg）</label>
+          <p class="sub">Rhino で開くとレンダリング表示で写真付きになります。インターネット接続が必要です。</p>
+        </div>
         <div class="ctl stlonly hide">
           <div class="lab"><span>形状</span></div>
           <select id="stlshape">
@@ -384,6 +395,7 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
   <footer>
     <p><b>座標について</b>　出力は X＝東・Y＝北・Z＝標高 の Z 軸上向きです。緯度経度を範囲中心の緯度で平面に近似しているため、数 km 四方であれば建築用途で問題になる歪みは出ません。</p>
     <p><b>3D ビュー</b>　地図右上の「3D」で、読み込んだ範囲（切り出し中はその範囲）を Rhino のような画面で確認できます。Perspective／Top／Front／Right の切り替え、シェーディング・段彩・ワイヤーフレーム、等高線の重ね表示ができ、「積層」にすると板を積んだ仕上がりの見当がつきます。3D 表示と Rhino（.3dm）書き出しにはインターネット接続が必要です。</p>
+    <p><b>航空写真</b>　国土地理院の地理院タイル「全国最新写真（シームレス）」を、その場でブラウザから読み込んで使います。資料などに使うときは「出典：国土地理院」と明記してください。撮影時期は場所によって異なります。</p>
     <p><b>対応するデータ</b>　数値標高モデル（5m メッシュ・10m メッシュ）専用です。建築物や道路などの「基本項目」には対応していません。</p>
     <p><b>保存形式</b>　STL は底と側面を閉じた立体（3D プリンター向け・mm）でそのまま保存します。OBJ・DXF・3DM は説明ファイルと一緒に zip に収めてお渡しします。展開して、Rhino は <code>開く</code> か <code>Import</code>、Illustrator は DXF を <code>開く</code> で読み込んでください。等高線は標高ごとに別レイヤー（EL +0050.0 のような名前）で、5 本ごとの計曲線は赤です。</p>
     <p>出典：国土地理院 基盤地図情報 ダウンロードサービス　<code>https://service.gsi.go.jp/kiban/</code></p>
@@ -552,6 +564,7 @@ function draw() {
   const cv = $("cv"); cv.width = w; cv.height = h;
   cv.style.setProperty("--ar", (w / h).toFixed(4));
   const ctx = cv.getContext("2d"), img = ctx.createImageData(w, h), d = img.data;
+  const gray = $("bg").value === "photoshade";
   const mx = G.mx * s, my = G.my * s, rng = Math.max(1, G.zmax - G.zmin);
   const seaCol = getComputedStyle(document.body).getPropertyValue("--sea").trim();
   const sc = seaCol.startsWith("#") ? [1,3,5].map(i => parseInt(seaCol.substr(i,2),16)) : [195,214,226];
@@ -559,19 +572,21 @@ function draw() {
     const v = G.z[y*G.nx+x]; return v <= NODATA+1 ? null : v; };
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const v = at(x, y), o = (y*w+x)*4; d[o+3] = 255;
-    if (v === null) { d[o] = sc[0]; d[o+1] = sc[1]; d[o+2] = sc[2]; continue; }
+    if (v === null) { if (gray) { d[o] = d[o+1] = d[o+2] = 255; } else { d[o] = sc[0]; d[o+1] = sc[1]; d[o+2] = sc[2]; } continue; }
     const gx = ((at(x+1,y) ?? v) - (at(x-1,y) ?? v)) / (2*mx);
     const gy = ((at(x,y+1) ?? v) - (at(x,y-1) ?? v)) / (2*my);
     const slope = Math.atan(Math.hypot(gx, gy)), asp = Math.atan2(-gx, gy);
     const A = Math.PI/4, AZ = Math.PI*7/4;
     const hs = Math.max(0, Math.min(1, Math.sin(A)*Math.cos(slope) + Math.cos(A)*Math.sin(slope)*Math.cos(AZ-asp)));
     const t = Math.max(0, Math.min(1, (v-G.zmin)/rng)) * (RAMP.length-1);
+    if (gray) { d[o] = d[o+1] = d[o+2] = 120 + 135*hs; continue; }
     const i0 = Math.min(RAMP.length-2, Math.floor(t)), f = t - i0, sh = .36 + .64*hs;
     d[o]   = (RAMP[i0][0]*(1-f) + RAMP[i0+1][0]*f) * sh;
     d[o+1] = (RAMP[i0][1]*(1-f) + RAMP[i0+1][1]*f) * sh;
     d[o+2] = (RAMP[i0][2]*(1-f) + RAMP[i0+1][2]*f) * sh;
   }
   ctx.putImageData(img, 0, 0);
+  drawPhoto2D(ctx, w, h);
   drawContours(ctx);
   if (CROP) {
     const s2 = PV.scale;
@@ -647,7 +662,7 @@ function estimate() {
 const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
 
 /* ===== 書き出し ===== */
-function buildOBJ() {
+function buildOBJ(withTex) {
   const r = region(), c = r.c;
   const zs = +$("zs").value / 10, seaMode = $("sea").value, unit = +$("unit").value;
   const mx = r.mx*unit, my = r.my*unit, nx = r.nx, ny = r.ny;
@@ -666,7 +681,8 @@ function buildOBJ() {
     + ` / 緯度 ${(G.lat1-c.y1*G.dlat).toFixed(6)}〜${(G.lat1-c.y0*G.dlat).toFixed(6)}\n`
     + `# 格子 ${nx} x ${ny}  間隔 ${r.mx.toFixed(2)} x ${r.my.toFixed(2)} m`
     + `  単位 ${unit === 1 ? "m" : "mm"}  標高倍率 ${zs}\n`
-    + `# X=東 Y=北 Z=標高\no terrain\n`);
+    + `# X=東 Y=北 Z=標高\n`
+    + (withTex ? `mtllib terrain.mtl\n` : ``) + `o terrain\n` + (withTex ? `usemtl photo\n` : ``));
   const valid = new Uint8Array(nx*ny);
   let buf = [];
   for (let j = 0; j < ny; j++) {
@@ -679,12 +695,22 @@ function buildOBJ() {
     if (buf.length > 200000) { parts.push(buf.join("")); buf = []; }
   }
   parts.push(buf.join("")); buf = [];
+  if (withTex) {                                        // 写真の位置（左上＝北西）
+    const Wc = c.x1 - c.x0, Hc = c.y1 - c.y0;
+    for (let j = 0; j < ny; j++) {
+      const vv = (1 - (j*r.step + .5) / Hc).toFixed(6);
+      for (let i = 0; i < nx; i++) buf.push("vt ", ((i*r.step + .5) / Wc).toFixed(6), " ", vv, "\n");
+      if (buf.length > 200000) { parts.push(buf.join("")); buf = []; }
+    }
+    parts.push(buf.join("")); buf = [];
+  }
   const holes = seaMode === "hole";
   for (let j = 0; j < ny-1; j++) {
     for (let i = 0; i < nx-1; i++) {
       if (holes && !(valid[j*nx+i] && valid[j*nx+i+1] && valid[(j+1)*nx+i] && valid[(j+1)*nx+i+1])) continue;
       const a = j*nx + i + 1;
-      buf.push("f ", a, " ", a+1, " ", a+nx+1, " ", a+nx, "\n");
+      if (withTex) buf.push("f ", a, "/", a, " ", a+1, "/", a+1, " ", a+nx+1, "/", a+nx+1, " ", a+nx, "/", a+nx, "\n");
+      else buf.push("f ", a, " ", a+1, " ", a+nx+1, " ", a+nx, "\n");
     }
     if (buf.length > 200000) { parts.push(buf.join("")); buf = []; }
   }
@@ -697,10 +723,22 @@ $("go").onclick = async () => {
   const label = btn.textContent;
   try {
     btn.textContent = "書き出しています…"; say("OBJ を組み立てています。"); await yield_();
-    const o = buildOBJ();
+    const withTex = $("objphoto").checked;
+    const o = buildOBJ(withTex);
     const base = `dem_${CROP ? "crop" : "full"}_${o.nx}x${o.ny}_step${o.step}`;
+    const files = [{ name: base + ".obj", data: o.text }];
+    if (withTex) {
+      btn.textContent = "航空写真を取得中…"; say("航空写真を取得しています（範囲が広いと少し時間がかかります）。"); await yield_();
+      const ll = cropLonLat();
+      const ph = await photoFor(ll.lon0, ll.lat0, ll.lon1, ll.lat1, 4096);
+      const jpg = await new Promise((res, rej) => ph.canvas.toBlob(b => b ? res(b) : rej(new Error("写真の画像を作れませんでした。")), "image/jpeg", 0.9));
+      files.push(
+        { name: "terrain.mtl", data: "newmtl photo\nKa 1 1 1\nKd 1 1 1\nKs 0 0 0\nd 1\nillum 1\nmap_Kd terrain_photo.jpg\n" },
+        { name: "terrain_photo.jpg", data: new Uint8Array(await jpg.arrayBuffer()) },
+        { name: "出典.txt", data: `${PHOTO_ATTR}\r\nhttps://maps.gsi.go.jp/development/ichiran.html\r\n画像 ${ph.canvas.width} x ${ph.canvas.height} px（ズームレベル ${ph.z}）\r\n` });
+    }
     say("zip に収めています。"); await yield_();
-    const blob = await zipFiles([{ name: base + ".obj", data: o.text }]);
+    const blob = await zipFiles(files);
     await deliver(base + ".zip", blob);
     say(`${base}.zip を保存しました。展開して Rhino の Import で読み込んでください。`);
   } catch (e) {
@@ -1537,6 +1575,104 @@ $("mfmt").onchange = syncMeshPanel;
 $("stlshape").onchange = stlEstimate;
 $("stlbase").oninput = stlEstimate;
 
+/* ===================== 航空写真（地理院タイル・全国最新写真） ===================== */
+const PHOTO_URL = (z, x, y) => `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`;
+const PHOTO_ATTR = "航空写真：国土地理院「全国最新写真（シームレス）」（地理院タイル）";
+const photoCache = new Map(), tileCache = new Map();
+const lon2px = (lon, z) => (lon + 180) / 360 * 256 * Math.pow(2, z);
+const lat2px = (lat, z) => { const r = lat * Math.PI / 180;
+  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 256 * Math.pow(2, z); };
+function getTile(z, x, y) {
+  const u = PHOTO_URL(z, x, y);
+  if (!tileCache.has(u)) tileCache.set(u, new Promise(res => {
+    const im = new Image(); im.crossOrigin = "anonymous";
+    im.onload = () => res(im); im.onerror = () => res(null); im.src = u;
+  }));
+  return tileCache.get(u);
+}
+/* 緯度経度の範囲の写真を、DEM の格子と同じ並び（緯度・経度に比例）の画像にして返す */
+function photoFor(lon0, lat0, lon1, lat1, maxPx) {
+  let z = 18;
+  for (; z > 3; z--) {
+    const w = lon2px(lon1, z) - lon2px(lon0, z), h = lat2px(lat0, z) - lat2px(lat1, z);
+    const tiles = (Math.floor(lon2px(lon1, z) / 256) - Math.floor(lon2px(lon0, z) / 256) + 1)
+                * (Math.floor(lat2px(lat0, z) / 256) - Math.floor(lat2px(lat1, z) / 256) + 1);
+    if (Math.max(w, h) <= maxPx * 1.25 && tiles <= 160) break;
+  }
+  const key = [lon0, lat0, lon1, lat1].map(v => v.toFixed(6)).join(",") + "@" + z;
+  if (photoCache.has(key)) return photoCache.get(key);
+  const job = (async () => {
+    const px0 = lon2px(lon0, z), px1 = lon2px(lon1, z), py0 = lat2px(lat1, z), py1 = lat2px(lat0, z);
+    const tx0 = Math.floor(px0 / 256), tx1 = Math.floor((px1 - 1e-6) / 256);
+    const ty0 = Math.floor(py0 / 256), ty1 = Math.floor((py1 - 1e-6) / 256);
+    const mos = document.createElement("canvas");
+    mos.width = (tx1 - tx0 + 1) * 256; mos.height = (ty1 - ty0 + 1) * 256;
+    const mc = mos.getContext("2d");
+    mc.fillStyle = "#3e5563"; mc.fillRect(0, 0, mos.width, mos.height);   // 写真のない所（海など）
+    const list = [];
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) list.push([tx, ty]);
+    let next = 0, ok = 0, miss = 0;
+    await Promise.all(Array.from({ length: 8 }, async () => {
+      while (next < list.length) {
+        const [tx, ty] = list[next++];
+        const im = await getTile(z, tx, ty);
+        if (im) { mc.drawImage(im, (tx - tx0) * 256, (ty - ty0) * 256); ok++; } else miss++;
+      }
+    }));
+    if (!ok) throw new Error("航空写真を取得できませんでした。インターネット接続を確認してください。");
+    const W = Math.max(2, Math.min(4096, Math.round(px1 - px0)));
+    const H = Math.max(2, Math.min(4096, Math.round(W * (lat1 - lat0) / (lon1 - lon0))));
+    const out = document.createElement("canvas"); out.width = W; out.height = H;
+    const oc = out.getContext("2d");
+    for (let r = 0; r < H; r++) {                         // メルカトル図法の行を緯度に合わせて並べ直す
+      const lat = lat1 - (r + 0.5) / H * (lat1 - lat0);
+      oc.drawImage(mos, px0 - tx0 * 256, lat2px(lat, z) - ty0 * 256 - 0.5, px1 - px0, 1, 0, r, W, 1);
+    }
+    return { canvas: out, z, ok, miss };
+  })();
+  job.catch(() => photoCache.delete(key));
+  photoCache.set(key, job);
+  return job;
+}
+function cropLonLat() {
+  const c = CROP || { x0: 0, y0: 0, x1: G.nx, y1: G.ny };
+  return { lon0: G.lon0 + c.x0 * G.dlon, lon1: G.lon0 + c.x1 * G.dlon,
+           lat1: G.lat1 - c.y0 * G.dlat, lat0: G.lat1 - c.y1 * G.dlat };
+}
+/* 平面の地図に重ねる */
+let PHOTO2D = null, photo2DWanted = null;
+const photo2DKey = () => [G.lon0, G.lat0, G.lon1, G.lat1].map(v => v.toFixed(6)).join(",");
+function drawPhoto2D(ctx, w, h) {
+  const bg = $("bg").value;
+  if (bg === "shade" || !G) return;
+  if (!PHOTO2D || PHOTO2D.key !== photo2DKey()) { requestPhoto2D(); return; }
+  ctx.save();
+  ctx.globalCompositeOperation = bg === "photoshade" ? "multiply" : "source-over";
+  ctx.drawImage(PHOTO2D.canvas, 0, 0, w, h);
+  ctx.restore();
+}
+function requestPhoto2D() {
+  const key = photo2DKey();
+  if (photo2DWanted === key) return;
+  photo2DWanted = key;
+  say("航空写真を読み込んでいます…");
+  photoFor(G.lon0, G.lat0, G.lon1, G.lat1, 1400).then(p => {
+    if (photo2DKey() !== key) return;
+    PHOTO2D = { key, canvas: p.canvas }; photo2DWanted = null;
+    say(p.miss ? `航空写真を表示しました（写真のないタイル ${p.miss} 枚は無地）。` : "航空写真を表示しました。");
+    draw();
+  }, e => {
+    photo2DWanted = null; say(e.message, true);
+    $("bg").value = "shade"; syncPhotoAttr(); draw();
+  });
+}
+function syncPhotoAttr() {
+  const used = $("bg").value !== "shade" || (V3.on && $("v3disp").value === "photo") || $("objphoto").checked;
+  $("photoattr").hidden = !used;
+}
+$("bg").onchange = () => { syncPhotoAttr(); draw(); };
+$("objphoto").onchange = syncPhotoAttr;
+
 /* ===================== 3D ビュー（Rhino 風） ===================== */
 const V3 = { on: false, renderer: null, scene: null, persp: null, ortho: null, target: null,
              vp: "persp", theta: 0.55, phi: 1.0, dist: 170, oHalf: 62,
@@ -1563,6 +1699,7 @@ async function show3D(on) {
   V3.on = on;
   $("v2d").setAttribute("aria-pressed", String(!on));
   $("v3d").setAttribute("aria-pressed", String(on));
+  setTimeout(syncPhotoAttr, 0);
   $("cv").classList.toggle("hide", on);
   $("v3").classList.toggle("hide", !on);
   $("row2d").classList.toggle("hide", on);
@@ -1695,7 +1832,8 @@ function bindOrbit(el) {
 function disposeObj(o) {
   if (!o) return;
   V3.scene.remove(o);
-  o.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
+  o.traverse(x => { if (x.geometry) x.geometry.dispose();
+    if (x.material) { if (x.material.map) x.material.map.dispose(); x.material.dispose(); } });
 }
 function build3D() {
   if (!V3.renderer || !G) return;
@@ -1754,11 +1892,30 @@ function build3D() {
     const geo = new T.BufferGeometry();
     geo.setAttribute("position", new T.BufferAttribute(pos, 3));
     geo.setAttribute("color", new T.BufferAttribute(col, 3));
+    const uv = new Float32Array(nx * ny * 2);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      uv[(j * nx + i) * 2] = (i * s + .5) / W; uv[(j * nx + i) * 2 + 1] = 1 - (j * s + .5) / H;
+    }
+    geo.setAttribute("uv", new T.BufferAttribute(uv, 2));
     geo.setIndex(new T.BufferAttribute(idx, 1));
     geo.computeVertexNormals();
-    g.add(new T.Mesh(geo, new T.MeshStandardMaterial({
-      vertexColors: true, roughness: 0.9, metalness: 0, flatShading: terrace, side: T.DoubleSide,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })));
+    const photo = disp === "photo";
+    const mat = new T.MeshStandardMaterial({
+      vertexColors: !photo, color: photo ? 0x8a8a8a : 0xffffff, roughness: photo ? 1 : 0.9, metalness: 0,
+      flatShading: terrace, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    g.add(new T.Mesh(geo, mat));
+    V3.photoToken = (V3.photoToken || 0) + 1;
+    if (photo) {
+      const tok = V3.photoToken, ll = cropLonLat(), msg = $("v3msg");
+      msg.hidden = false; msg.textContent = "航空写真を読み込んでいます…";
+      photoFor(ll.lon0, ll.lat0, ll.lon1, ll.lat1, 2048).then(ph => {
+        if (tok !== V3.photoToken) return;
+        const tex = new T.CanvasTexture(ph.canvas);
+        tex.anisotropy = V3.renderer.capabilities.getMaxAnisotropy();
+        mat.map = tex; mat.color.set(0xffffff); mat.needsUpdate = true;
+        msg.hidden = true; render3D();
+      }, e => { if (tok === V3.photoToken) msg.textContent = e.message; });
+    }
   }
   disposeObj(V3.terrain); V3.terrain = g; V3.scene.add(g);
   V3.grid.position.y = -0.05;
@@ -1800,7 +1957,7 @@ function resetView3D() {
 }
 $("v2d").onclick = () => show3D(false);
 $("v3d").onclick = () => show3D(true);
-$("v3disp").onchange = () => build3D();
+$("v3disp").onchange = () => { syncPhotoAttr(); build3D(); };
 $("v3terr").onchange = () => build3D();
 $("v3cont").onchange = () => build3DContours();
 $("v3reset").onclick = resetView3D;

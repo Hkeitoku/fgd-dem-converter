@@ -134,7 +134,7 @@ button:hover{border-color:var(--accent);color:var(--accent)}
 /* 設定を動かしながら見られるよう、左の列（地図・3D）を画面に固定 */
 @media (min-width:921px){
   .deck>div:first-child{position:sticky;top:14px}
-  #cv{max-height:calc(100vh - 250px);width:auto;max-width:100%;margin-inline:auto}
+  #cv{width:min(100%, calc((100vh - 250px) * var(--ar, 1)));height:auto;margin-inline:auto}
   #v3{max-height:calc(100vh - 300px)}
 }
 @media (max-width:920px){
@@ -142,7 +142,7 @@ button:hover{border-color:var(--accent);color:var(--accent)}
     box-shadow:0 6px 12px -8px rgba(0,0,0,.35)}
   .deck>div:first-child #drop{padding:8px 12px;margin-bottom:8px}
   .deck>div:first-child #drop small,#row3dhelp,.deck>div:first-child .pad .meter{display:none}
-  #cv{max-height:34vh;width:auto;max-width:100%;margin-inline:auto}
+  #cv{width:min(100%, calc(34vh * var(--ar, 1)));height:auto;margin-inline:auto}
   #v3{max-height:34vh}
 }
 details.panel>summary{list-style:none;cursor:pointer}
@@ -537,6 +537,7 @@ function draw() {
   const w = Math.max(1, Math.floor(G.nx / s)), h = Math.max(1, Math.floor(G.ny / s));
   PV = { scale: s };
   const cv = $("cv"); cv.width = w; cv.height = h;
+  cv.style.setProperty("--ar", (w / h).toFixed(4));
   const ctx = cv.getContext("2d"), img = ctx.createImageData(w, h), d = img.data;
   const mx = G.mx * s, my = G.my * s, rng = Math.max(1, G.zmax - G.zmin);
   const seaCol = getComputedStyle(document.body).getPropertyValue("--sea").trim();

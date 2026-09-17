@@ -290,13 +290,9 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
         </div>
 
         <div class="ctl">
-          <div class="lab"><span>切り捨てる島の大きさ</span><span id="mav">2.0 mm² 未満</span></div>
-          <input type="range" id="ma" min="0" max="50" value="20">
-        </div>
-
-        <div class="ctl">
           <div class="lab"><span>線の単純化</span><span id="tlv">0.15 mm</span></div>
-          <input type="range" id="tl" min="0" max="30" value="3">
+          <input type="range" id="tl" min="0" max="40" value="10">
+          <p class="sub">線から余分な点を減らします。値は「元の線からずれてよい幅」で、右へ行くほど強く効きます（最大 10 mm）。</p>
         </div>
 
         <div class="ctl">
@@ -328,8 +324,15 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
       </div>
 
       <div class="panel" style="margin-top:16px">
-        <div class="phead"><h2>3D メッシュ</h2><span class="tag">OBJ</span></div>
+        <div class="phead"><h2>3D メッシュ</h2><span class="tag">OBJ / STL</span></div>
 
+        <div class="ctl">
+          <div class="lab"><span>形式</span></div>
+          <select id="mfmt">
+            <option value="obj">OBJ（Rhino・Grasshopper 用の地形面）</option>
+            <option value="stl">STL（3D プリンター用・底と側面を閉じた立体）</option>
+          </select>
+        </div>
         <div class="ctl">
           <div class="lab"><span>解像度（間引き）</span><span id="stepv">1/1</span></div>
           <input type="range" id="step" min="1" max="10" value="1">
@@ -338,7 +341,7 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
           <div class="lab"><span>標高の倍率</span><span id="zsv">×1.0</span></div>
           <input type="range" id="zs" min="5" max="50" value="10">
         </div>
-        <div class="ctl">
+        <div class="ctl objonly">
           <div class="lab"><span>海・データなしの扱い</span></div>
           <select id="sea">
             <option value="flat">標高 0 m の平面で埋める</option>
@@ -346,19 +349,29 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
             <option value="min">範囲内の最低標高で埋める</option>
           </select>
         </div>
-        <div class="ctl">
+        <div class="ctl objonly">
           <div class="lab"><span>原点の位置</span></div>
           <select id="org">
             <option value="sw">切り出し範囲の南西角</option>
             <option value="center">切り出し範囲の中心</option>
           </select>
         </div>
-        <div class="ctl">
+        <div class="ctl objonly">
           <div class="lab"><span>水平方向の単位</span></div>
           <select id="unit">
             <option value="1">メートル</option>
             <option value="1000">ミリメートル</option>
           </select>
+        </div>
+        <div class="ctl stlonly hide">
+          <div class="lab"><span>形状</span></div>
+          <select id="stlshape">
+            <option value="terrain">地形そのまま</option>
+            <option value="terrace">積層（等高線の間隔で段にする）</option>
+          </select>
+          <div class="lab" style="margin-top:14px"><span>底の厚み</span><span id="stlbasev">3 mm</span></div>
+          <input type="range" id="stlbase" min="1" max="20" value="3">
+          <p class="sub">大きさは「積層模型の等高線」の縮尺と間隔で決まり、単位は mm です。海やデータのない所は底の高さで平らになります。</p>
         </div>
         <div class="ctl">
           <button id="go" type="button">OBJ を書き出す</button>
@@ -372,7 +385,7 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
     <p><b>座標について</b>　出力は X＝東・Y＝北・Z＝標高 の Z 軸上向きです。緯度経度を範囲中心の緯度で平面に近似しているため、数 km 四方であれば建築用途で問題になる歪みは出ません。</p>
     <p><b>3D ビュー</b>　地図右上の「3D」で、読み込んだ範囲（切り出し中はその範囲）を Rhino のような画面で確認できます。Perspective／Top／Front／Right の切り替え、シェーディング・段彩・ワイヤーフレーム、等高線の重ね表示ができ、「積層」にすると板を積んだ仕上がりの見当がつきます。3D 表示と Rhino（.3dm）書き出しにはインターネット接続が必要です。</p>
     <p><b>対応するデータ</b>　数値標高モデル（5m メッシュ・10m メッシュ）専用です。建築物や道路などの「基本項目」には対応していません。</p>
-    <p><b>保存形式</b>　OBJ・DXF・3DM は説明ファイルと一緒に zip に収めてお渡しします。展開して、Rhino は <code>開く</code> か <code>Import</code>、Illustrator は DXF を <code>開く</code> で読み込んでください。等高線は標高ごとに別レイヤー（EL +0050.0 のような名前）で、5 本ごとの計曲線は赤です。</p>
+    <p><b>保存形式</b>　STL は底と側面を閉じた立体（3D プリンター向け・mm）でそのまま保存します。OBJ・DXF・3DM は説明ファイルと一緒に zip に収めてお渡しします。展開して、Rhino は <code>開く</code> か <code>Import</code>、Illustrator は DXF を <code>開く</code> で読み込んでください。等高線は標高ごとに別レイヤー（EL +0050.0 のような名前）で、5 本ごとの計曲線は赤です。</p>
     <p>出典：国土地理院 基盤地図情報 ダウンロードサービス　<code>https://service.gsi.go.jp/kiban/</code></p>
   </footer>
 </div>
@@ -629,6 +642,7 @@ function estimate() {
     row("標高", valid ? `${zmin.toFixed(1)} – ${zmax.toFixed(1)} m` : "—") +
     row("陸地率", tot ? `${(100*valid/tot).toFixed(1)} %` : "—");
   $("metasum").textContent = `${fmt(G.tiles)} タイル・標高 ${valid ? zmin.toFixed(0) + "–" + zmax.toFixed(0) : "—"} m`;
+  if ($("mfmt").value === "stl") stlEstimate();
 }
 const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
 
@@ -678,6 +692,7 @@ function buildOBJ() {
   return { text: parts.join(""), nx, ny, step: r.step };
 }
 $("go").onclick = async () => {
+  if ($("mfmt").value === "stl") return exportSTL();
   const btn = $("go"); btn.disabled = true;
   const label = btn.textContent;
   try {
@@ -952,6 +967,15 @@ function traceLines(PX, PY, A, M) {
 }
 
 /* --- 単純化と面積 --- */
+function simplifyRing(pts, tol) {          // 閉じた輪郭は最も遠い点で2つに分けてから単純化
+  const n = pts.length;
+  if (n < 4 || tol <= 0) return pts;
+  let far = 0, fd = -1;
+  for (let i = 1; i < n; i++) { const d = Math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]); if (d > fd) { fd = d; far = i; } }
+  const a = simplify(pts.slice(0, far + 1), tol);
+  const b = simplify(pts.slice(far).concat([pts[0]]), tol);
+  return a.concat(b.slice(1, -1));
+}
 function simplify(pts, tol) {
   const n = pts.length;
   if (n < 3 || tol <= 0) return pts;
@@ -995,8 +1019,7 @@ function contourOpts() {
   const den = scaleDen(), iv = interval();
   return { den, iv,
     smooth: +$("sm").value,
-    minArea: +$("ma").value / 10,          // mm^2
-    tol: +$("tl").value / 20,              // mm
+    tol: 10 * Math.pow(+$("tl").value / 40, 2),   // mm（0〜10、左側ほど細かく調整できる）
     k: 1000 / den };                       // 実寸 m -> 模型 mm
 }
 
@@ -1030,15 +1053,15 @@ function buildContours(preview) {
   for (let i = 0; i < src.length; i++) z[i] = src[i] <= NODATA + 1 ? seaFill : src[i];
   const raw = marchAll(z, nx, ny, levels);
   const cellX = G.mx * s * o.k, cellY = G.my * s * o.k;   // 1格子あたりの模型 mm
-  const st = { rawPts: 0, keptPts: 0, dropped: 0 };
+  const st = { rawPts: 0, keptPts: 0 };
   const sets = raw.map(lines => {
     const out = [];
     for (const ln of lines) {
       let pts = ln.pts.map(([x, y]) => [x * cellX, (ny - 1 - y) * cellY]);
       st.rawPts += pts.length;
-      pts = simplify(pts, o.tol);
+      pts = ln.closed ? simplifyRing(pts, o.tol) : simplify(pts, o.tol);
       if (pts.length < 2) continue;
-      if (ln.closed && ringArea(pts) < o.minArea) { st.dropped++; continue; }
+      if (ln.closed && (pts.length < 3 || ringArea(pts) <= 0)) continue;
       if (!ln.closed && pts.length < 3) continue;
       st.keptPts += pts.length;
       out.push({ pts, closed: ln.closed });
@@ -1093,8 +1116,8 @@ function contourEstimate() {
   $("thv").textContent = $("thick").value + " mm";
   $("ivv").textContent = (o.iv < 1 ? o.iv.toFixed(2) : o.iv.toFixed(o.iv % 1 ? 1 : 0)) + " m";
   $("smv").textContent = SM_WORDS[+$("sm").value];
-  $("mav").textContent = o.minArea.toFixed(1) + " mm² 未満";
-  $("tlv").textContent = o.tol.toFixed(2) + " mm";
+  { const m = o.tol / o.k;
+    $("tlv").textContent = `${o.tol.toFixed(2)} mm（実寸 ${m < 10 ? m.toFixed(1) : m.toFixed(0)} m）`; }
   $("ivnote").textContent = $("ivmode").value === "auto"
     ? `板厚 ${$("thick").value} mm ＝ 実寸 ${o.iv < 1 ? o.iv.toFixed(2) : o.iv} m 分の高さになります。`
     : "";
@@ -1107,12 +1130,12 @@ function contourEstimate() {
     `模型 <span class="hi">${mmW.toFixed(0)} × ${mmH.toFixed(0)} mm</span>`
     + `　高さ ${modelH.toFixed(0)} mm<br>`
     + `層数 <span class="hi">${fmt(layers)} 枚</span>　輪郭 ${fmt(paths)} 本<br>`
-    + `切り捨てた島 <span class="hi">${fmt(CPREV.st.dropped)} 個</span><br>`
     + `線の点数 ${fmt(CPREV.st.rawPts)} → <span class="hi">${fmt(CPREV.st.keptPts)}</span>`
     + `（単純化で −${CPREV.st.rawPts ? Math.round(100 * (1 - CPREV.st.keptPts / CPREV.st.rawPts)) : 0}%）<br>`
     + `<span style="color:var(--faint)">※ 数は下絵の解像度での目安。3D の Top 表示で拡大すると線の変化が見えます</span>`
     + (many ? `<br><span class="bad">層が多すぎて切り出しが大変です。板を厚くするか縮尺を小さくしてください。</span>` : "");
   $("cgo").disabled = layers === 0;
+  stlEstimate();
 }
 
 /* --- 書き出しの共通 --- */
@@ -1332,7 +1355,6 @@ $("cgo").onclick = async () => {
       (T ? `地形メッシュ      ${T.nx} × ${T.ny} 点（${(T.step * G.mx).toFixed(1)} m 間隔）・海やデータなしは面なし\r\n` : "") +
       `平滑化            半径 ${o.smooth} 格子\r\n` +
       `線の単純化        ${o.tol.toFixed(2)} mm（模型寸法）\r\n` +
-      `切り捨てた島      ${o.minArea.toFixed(1)} mm² 未満（模型寸法）\r\n` +
       `------------------------------------------------------------\r\n` +
       `等高線は標高ごとに別レイヤー（EL +0050.0 のような名前）です。\r\n` +
       `5 本ごとの計曲線は赤で色分けしています。\r\n` +
@@ -1388,8 +1410,132 @@ function autoScale() {
   $("scale").value = String(pick || dens[dens.length - 1]);
 }
 $("ivman").oninput = () => refreshContours();
-["sm", "ma", "tl"].forEach(id => $(id).oninput = () => { contourEstimate(); refreshContours(); });
+["sm", "tl"].forEach(id => $(id).oninput = () => { contourEstimate(); refreshContours(); });
 $("showc").onchange = () => draw();
+
+/* ===================== STL（3D プリント用の閉じた立体） ===================== */
+const STL_MAX_POINTS = 200000;
+function stlGrid() {
+  const o = contourOpts(), r = region(), c = r.c;
+  const W = c.x1 - c.x0, H = c.y1 - c.y0;
+  let step = Math.max(1, +$("step").value);
+  while (Math.ceil(W / step) * Math.ceil(H / step) > STL_MAX_POINTS) step++;
+  const nx = Math.floor((W - 1) / step) + 1, ny = Math.floor((H - 1) / step) + 1;
+  return { o, c, step, nx, ny };
+}
+function stlInfo() {
+  const g = stlGrid();
+  const tris = 4 * (g.nx - 1) * (g.ny - 1) + 4 * ((g.nx - 1) + (g.ny - 1));
+  return { ...g, tris, mb: (84 + 50 * tris) / 1048576,
+           sizeX: (g.nx - 1) * g.step * G.mx * g.o.k, sizeY: (g.ny - 1) * g.step * G.my * g.o.k };
+}
+function buildSTL() {
+  const { o, c, step, nx, ny } = stlGrid();
+  const terrace = $("stlshape").value === "terrace";
+  const zs = +$("zs").value / 10, baseT = +$("stlbase").value;
+  const iv = o.iv, k = o.k;                       // k：実寸 m → 模型 mm
+  const hz = new Float32Array(nx * ny);
+  let zmin = Infinity;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const v = G.z[(c.y0 + j * step) * G.nx + (c.x0 + i * step)];
+    hz[j * nx + i] = v;
+    if (v > NODATA + 1 && v < zmin) zmin = v;
+  }
+  if (!isFinite(zmin)) throw new Error("この範囲には標高データがありません。");
+  const lo = terrace ? Math.floor(zmin / iv) * iv : zmin;
+  const X = new Float32Array(nx), Y = new Float32Array(ny), Z = new Float32Array(nx * ny);
+  for (let i = 0; i < nx; i++) X[i] = i * step * G.mx * k;
+  for (let j = 0; j < ny; j++) Y[j] = (ny - 1 - j) * step * G.my * k;
+  let ztop = 0;
+  for (let p = 0; p < hz.length; p++) {
+    const v = hz[p];
+    let h = v > NODATA + 1 ? v : lo;               // 海・データなしは底面の高さにそろえる
+    if (terrace) h = Math.floor(h / iv) * iv;
+    Z[p] = (h - lo) * k * zs + baseT;
+    if (Z[p] > ztop) ztop = Z[p];
+  }
+  const tris = 4 * (nx - 1) * (ny - 1) + 4 * ((nx - 1) + (ny - 1));
+  const buf = new ArrayBuffer(84 + 50 * tris), dv = new DataView(buf);
+  const head = new TextEncoder().encode(`FGD DEM 1/${o.den} ${terrace ? "terrace " + iv + "m" : "terrain"} base ${baseT}mm`);
+  new Uint8Array(buf, 0, 80).set(head.subarray(0, 80));
+  dv.setUint32(80, tris, true);
+  let off = 84;
+  const tri = (ax, ay, az, bx, by, bz, cx, cy, cz) => {
+    const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+    let nxv = uy * vz - uz * vy, nyv = uz * vx - ux * vz, nzv = ux * vy - uy * vx;
+    const len = Math.hypot(nxv, nyv, nzv) || 1;
+    dv.setFloat32(off, nxv / len, true); dv.setFloat32(off + 4, nyv / len, true); dv.setFloat32(off + 8, nzv / len, true);
+    dv.setFloat32(off + 12, ax, true); dv.setFloat32(off + 16, ay, true); dv.setFloat32(off + 20, az, true);
+    dv.setFloat32(off + 24, bx, true); dv.setFloat32(off + 28, by, true); dv.setFloat32(off + 32, bz, true);
+    dv.setFloat32(off + 36, cx, true); dv.setFloat32(off + 40, cy, true); dv.setFloat32(off + 44, cz, true);
+    dv.setUint16(off + 48, 0, true);
+    off += 50;
+  };
+  // 上面（地形）と底面（Z=0）
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+    const xa = X[i], xb = X[i + 1], yt = Y[j], yb = Y[j + 1];
+    tri(xa, yt, Z[a], xa, yb, Z[d], xb, yb, Z[e]);
+    tri(xa, yt, Z[a], xb, yb, Z[e], xb, yt, Z[b]);
+    tri(xa, yt, 0, xb, yb, 0, xa, yb, 0);
+    tri(xa, yt, 0, xb, yt, 0, xb, yb, 0);
+  }
+  // 側面：北（j=0）・南（j=ny-1）
+  for (let i = 0; i < nx - 1; i++) {
+    const xa = X[i], xb = X[i + 1];
+    let y = Y[0], za = Z[i], zb = Z[i + 1];
+    tri(xa, y, 0, xa, y, za, xb, y, zb); tri(xa, y, 0, xb, y, zb, xb, y, 0);
+    y = Y[ny - 1]; za = Z[(ny - 1) * nx + i]; zb = Z[(ny - 1) * nx + i + 1];
+    tri(xa, y, 0, xb, y, zb, xa, y, za); tri(xa, y, 0, xb, y, 0, xb, y, zb);
+  }
+  // 側面：西（i=0）・東（i=nx-1）
+  for (let j = 0; j < ny - 1; j++) {
+    const yp = Y[j], yq = Y[j + 1];
+    let x = X[0], zp = Z[j * nx], zq = Z[(j + 1) * nx];
+    tri(x, yp, 0, x, yq, zq, x, yp, zp); tri(x, yp, 0, x, yq, 0, x, yq, zq);
+    x = X[nx - 1]; zp = Z[j * nx + nx - 1]; zq = Z[(j + 1) * nx + nx - 1];
+    tri(x, yp, 0, x, yp, zp, x, yq, zq); tri(x, yp, 0, x, yq, zq, x, yq, 0);
+  }
+  return { buf, nx, ny, step, tris, sizeX: X[nx - 1], sizeY: Y[0], sizeZ: ztop, terrace };
+}
+function stlEstimate() {
+  if (!G || $("mfmt").value !== "stl") return;
+  const s = stlInfo();
+  $("stlbasev").textContent = $("stlbase").value + " mm";
+  $("go").disabled = s.nx < 2 || s.ny < 2;
+  $("estim").innerHTML =
+    `模型 <span class="hi">${s.sizeX.toFixed(0)} × ${s.sizeY.toFixed(0)} mm</span>（1/${fmt(s.o.den)}）<br>`
+    + `格子 ${s.nx} × ${s.ny}（実寸 ${(s.step * G.mx).toFixed(1)} m 間隔）　三角形 ${fmt(s.tris)}　約 ${s.mb.toFixed(1)} MB`
+    + (s.sizeX > 400 || s.sizeY > 400
+       ? `<br><span class="bad">一般的な 3D プリンターの造形範囲（約 250 mm）を超えています。縮尺を小さくするか範囲を狭めてください。</span>` : "");
+}
+async function exportSTL() {
+  const btn = $("go"), label = btn.textContent;
+  btn.disabled = true;
+  try {
+    btn.textContent = "書き出しています…"; say("STL を組み立てています。"); await yield_();
+    const m = buildSTL();
+    const name = `model_1-${contourOpts().den}_${m.terrace ? "terrace" : "terrain"}_${m.nx}x${m.ny}.stl`;
+    await deliver(name, new Blob([m.buf], { type: "model/stl" }));
+    say(`${name} を保存しました。${m.sizeX.toFixed(0)} × ${m.sizeY.toFixed(0)} × ${m.sizeZ.toFixed(0)} mm、三角形 ${fmt(m.tris)}。`);
+  } catch (e) {
+    const code = e && e.code;
+    if (code === "declined") say("保存を取り消しました。");
+    else if (code === "rejected_extension" || code === "extension_not_enabled")
+      say("このページでは STL を保存できません。公開サイト（GitHub）版を使ってください。", true);
+    else say("STL を書き出せませんでした：" + ((e && e.message) || e), true);
+  } finally { btn.textContent = label; btn.disabled = false; }
+}
+function syncMeshPanel() {
+  const stl = $("mfmt").value === "stl";
+  document.querySelectorAll(".objonly").forEach(el => el.classList.toggle("hide", stl));
+  document.querySelectorAll(".stlonly").forEach(el => el.classList.toggle("hide", !stl));
+  $("go").textContent = stl ? "STL を書き出す" : "OBJ を書き出す";
+  estimate();
+}
+$("mfmt").onchange = syncMeshPanel;
+$("stlshape").onchange = stlEstimate;
+$("stlbase").oninput = stlEstimate;
 
 /* ===================== 3D ビュー（Rhino 風） ===================== */
 const V3 = { on: false, renderer: null, scene: null, persp: null, ortho: null, target: null,

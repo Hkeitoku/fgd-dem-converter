@@ -126,6 +126,10 @@ button:hover{border-color:var(--accent);color:var(--accent)}
 #v3msg{position:absolute;inset:0;display:grid;place-items:center;padding:20px;text-align:center;
   font-family:var(--mono);font-size:11.5px;color:var(--muted);pointer-events:none}
 #v3msg[hidden]{display:none}
+#v3{background:linear-gradient(#b7b9bb,#9b9ea1)}
+#vplabel{position:absolute;left:10px;top:7px;font-family:"Segoe UI",system-ui,sans-serif;font-size:12px;
+  color:#2b2b2b;pointer-events:none;letter-spacing:.01em}
+#vpseg button{font-family:"Segoe UI",system-ui,sans-serif}
 .maprow select{width:auto;padding:4px 8px;font-size:11.5px}
 .chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted);font-size:11.5px}
 .chk input{accent-color:var(--accent);margin:0}
@@ -177,17 +181,28 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
         </div>
         <div class="mapwrap">
           <canvas id="cv" width="120" height="120"></canvas>
-          <div id="v3" class="hide"><div id="v3msg">3D を準備しています…</div></div>
+          <div id="v3" class="hide"><div id="vplabel">Perspective</div><div id="v3msg">3D を準備しています…</div></div>
         </div>
         <div class="maprow hide" id="row3d">
-          <span>ドラッグで回転 ・ 右ドラッグで移動 ・ ホイールで拡大</span>
-          <span style="display:flex;gap:10px;align-items:center">
-            <select id="v3mode" aria-label="3D の表示">
-              <option value="terrain">地形</option>
-              <option value="terrace">積層模型（等高線の間隔で段にする）</option>
+          <span class="seg" id="vpseg">
+            <button type="button" data-vp="persp" aria-pressed="true">Perspective</button>
+            <button type="button" data-vp="top" aria-pressed="false">Top</button>
+            <button type="button" data-vp="front" aria-pressed="false">Front</button>
+            <button type="button" data-vp="right" aria-pressed="false">Right</button>
+          </span>
+          <span style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <select id="v3disp" aria-label="表示モード">
+              <option value="shaded">シェーディング</option>
+              <option value="color">段彩</option>
+              <option value="wire">ワイヤーフレーム</option>
             </select>
+            <label class="chk" for="v3terr"><input type="checkbox" id="v3terr">積層</label>
+            <label class="chk" for="v3cont"><input type="checkbox" id="v3cont" checked>等高線</label>
             <button id="v3reset" type="button">視点を戻す</button>
           </span>
+        </div>
+        <div class="maprow hide" id="row3dhelp" style="padding-top:0">
+          <span>Perspective：左ドラッグで回転 ・ 右ドラッグか Shift＋ドラッグで移動 ・ ホイールで拡大　／　Top・Front・Right：ドラッグで移動</span>
         </div>
         <div class="maprow" id="row2d">
           <span>図の上をドラッグすると書き出す範囲を切り出せます</span>
@@ -249,7 +264,7 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
       </div>
 
       <div class="panel" style="margin-top:16px">
-        <div class="phead"><h2>積層模型の等高線</h2><span class="tag">DXF / SVG</span></div>
+        <div class="phead"><h2>積層模型の等高線</h2><span class="tag">3DM / DXF / SVG</span></div>
 
         <div class="ctl">
           <div class="lab"><span>模型の縮尺</span><span id="scv">1 / 2000</span></div>
@@ -305,13 +320,30 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
         </div>
 
         <div class="ctl">
-          <div class="lab"><span>書き出す形式</span></div>
-          <select id="cfmt">
-            <option value="dxf">DXF（標高ごとにレイヤー分け・zip）</option>
-            <option value="svg">SVG（レーザー加工機・Illustrator）</option>
+          <p class="estim" id="cest" style="margin-top:0"></p>
+        </div>
+
+        <div class="ctl">
+          <div class="lab"><span>書き出す内容</span></div>
+          <select id="cwhat">
+            <option value="site">敷地（地形）＋ 等高線 ― 3D・高さ付き</option>
+            <option value="c3d">等高線のみ ― 3D・高さ付き</option>
+            <option value="flat" selected>等高線のみ ― 平面 Z=0（Illustrator・レーザー）</option>
           </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>形式</span></div>
+          <select id="cfmt"></select>
+          <p class="sub" id="cfmtnote"></p>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>図面の単位</span></div>
+          <select id="cunit">
+            <option value="model">模型寸法（mm・縮尺をかけた大きさ）</option>
+            <option value="real">実寸（m）</option>
+          </select>
+          <p class="sub">地形メッシュの細かさは「3D メッシュ」の解像度（間引き）に合わせます。</p>
           <button id="cgo" type="button">等高線を書き出す</button>
-          <p class="estim" id="cest"></p>
         </div>
       </div>
     </div>
@@ -319,9 +351,9 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 
   <footer>
     <p><b>座標について</b>　出力は X＝東・Y＝北・Z＝標高 の Z 軸上向きです。緯度経度を範囲中心の緯度で平面に近似しているため、数 km 四方であれば建築用途で問題になる歪みは出ません。</p>
-    <p><b>3D ビュー</b>　地図右上の「3D」で、読み込んだ範囲（切り出し中はその範囲）を立体で確認できます。「積層模型」にすると等高線の間隔で段になり、板を積んだ仕上がりの見当がつきます。3D の表示にはインターネット接続が必要です。</p>
+    <p><b>3D ビュー</b>　地図右上の「3D」で、読み込んだ範囲（切り出し中はその範囲）を Rhino のような画面で確認できます。Perspective／Top／Front／Right の切り替え、シェーディング・段彩・ワイヤーフレーム、等高線の重ね表示ができ、「積層」にすると板を積んだ仕上がりの見当がつきます。3D 表示と Rhino（.3dm）書き出しにはインターネット接続が必要です。</p>
     <p><b>対応するデータ</b>　数値標高モデル（5m メッシュ・10m メッシュ）専用です。建築物や道路などの「基本項目」には対応していません。</p>
-    <p><b>保存形式</b>　このページでは OBJ を zip に収めてお渡しします（<code>.obj</code> が保存できる拡張子に含まれていないため）。展開して Rhino の <code>Import</code> で読み込んでください。</p>
+    <p><b>保存形式</b>　OBJ・DXF・3DM は説明ファイルと一緒に zip に収めてお渡しします。展開して、Rhino は <code>開く</code> か <code>Import</code>、Illustrator は DXF を <code>開く</code> で読み込んでください。等高線は標高ごとに別レイヤー（EL +0050.0 のような名前）で、5 本ごとの計曲線は赤です。</p>
     <p>出典：国土地理院 基盤地図情報 ダウンロードサービス　<code>https://service.gsi.go.jp/kiban/</code></p>
   </footer>
 </div>
@@ -952,7 +984,7 @@ function buildContours(preview) {
   const o = contourOpts();
   const r = region(), c = r.c;
   const W = c.x1 - c.x0, H = c.y1 - c.y0;
-  const s = preview ? Math.max(1, Math.ceil(Math.max(W, H) / 380)) : 1;
+  const s = preview ? Math.max(1, Math.ceil(Math.max(W, H) / 640)) : 1;
   const nx = Math.floor(W / s), ny = Math.floor(H / s);
   if (nx < 2 || ny < 2) return null;
   let src = new Float32Array(nx * ny);
@@ -977,23 +1009,27 @@ function buildContours(preview) {
   for (let i = 0; i < src.length; i++) z[i] = src[i] <= NODATA + 1 ? seaFill : src[i];
   const raw = marchAll(z, nx, ny, levels);
   const cellX = G.mx * s * o.k, cellY = G.my * s * o.k;   // 1格子あたりの模型 mm
+  const st = { rawPts: 0, keptPts: 0, dropped: 0 };
   const sets = raw.map(lines => {
     const out = [];
     for (const ln of lines) {
       let pts = ln.pts.map(([x, y]) => [x * cellX, (ny - 1 - y) * cellY]);
+      st.rawPts += pts.length;
       pts = simplify(pts, o.tol);
       if (pts.length < 2) continue;
-      if (ln.closed && ringArea(pts) < o.minArea) continue;
+      if (ln.closed && ringArea(pts) < o.minArea) { st.dropped++; continue; }
       if (!ln.closed && pts.length < 3) continue;
+      st.keptPts += pts.length;
       out.push({ pts, closed: ln.closed });
     }
     return out;
   });
-  return { levels, sets, s, o, nx, ny,
+  return { levels, sets, s, o, nx, ny, st,
            sizeX: (nx - 1) * cellX, sizeY: (ny - 1) * cellY, zmin, zmax };
 }
 
 /* --- プレビュー --- */
+function cvPx() { const cv = $("cv"); const w = cv.getBoundingClientRect().width || cv.width; return cv.width / w; }
 let CPREV = null, cTimer = null;
 function drawContours(ctx) {
   if (!CPREV || !$("showc").checked || !CPREV.sets.length) return;
@@ -1004,9 +1040,9 @@ function drawContours(ctx) {
     (c.x0 + (mmx / (G.mx * s * o.k)) * s) / PV.scale,
     (c.y0 + (ny - 1 - mmy / (G.my * s * o.k)) * s) / PV.scale];
   ctx.save();
-  ctx.lineWidth = .7; ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(.8, cvPx()); ctx.lineJoin = "round";
   sets.forEach((lines, k) => {
-    ctx.strokeStyle = (k % 5 === 0) ? "rgba(255,252,245,.92)" : "rgba(28,40,36,.45)";
+    ctx.strokeStyle = (k % 5 === 0) ? "rgba(176,30,30,.95)" : "rgba(12,16,14,.8)";
     ctx.beginPath();
     for (const ln of lines) {
       ln.pts.forEach((p, i) => { const [x, y] = px(p[0], p[1]);
@@ -1023,7 +1059,7 @@ function refreshContours(now) {
     if (!G) return;
     try { CPREV = buildContours(true); } catch (_) { CPREV = null; }
     draw(); contourEstimate();
-    if ($("v3mode").value === "terrace") rebuild3D();
+    if (V3.on && V3.renderer) { if ($("v3terr").checked) rebuild3D(); else build3DContours(); }
   };
   if (now) run(); else cTimer = setTimeout(run, 160);
 }
@@ -1049,40 +1085,103 @@ function contourEstimate() {
   $("cest").innerHTML =
     `模型 <span class="hi">${mmW.toFixed(0)} × ${mmH.toFixed(0)} mm</span>`
     + `　高さ ${modelH.toFixed(0)} mm<br>`
-    + `層数 <span class="hi">${fmt(layers)} 枚</span>　輪郭 約 ${fmt(paths)} 本`
-    + `（下絵は粗く表示しています）`
+    + `層数 <span class="hi">${fmt(layers)} 枚</span>　輪郭 ${fmt(paths)} 本<br>`
+    + `切り捨てた島 <span class="hi">${fmt(CPREV.st.dropped)} 個</span><br>`
+    + `線の点数 ${fmt(CPREV.st.rawPts)} → <span class="hi">${fmt(CPREV.st.keptPts)}</span>`
+    + `（単純化で −${CPREV.st.rawPts ? Math.round(100 * (1 - CPREV.st.keptPts / CPREV.st.rawPts)) : 0}%）<br>`
+    + `<span style="color:var(--faint)">※ 数は下絵の解像度での目安。3D の Top 表示で拡大すると線の変化が見えます</span>`
     + (many ? `<br><span class="bad">層が多すぎて切り出しが大変です。板を厚くするか縮尺を小さくしてください。</span>` : "");
   $("cgo").disabled = layers === 0;
 }
 
+/* --- 書き出しの共通 --- */
+const elName = lv => (lv < 0 ? "-" : "+") + Math.abs(lv).toFixed(1).padStart(6, "0");
+const FMT_OPTS = {
+  site: [["3dm", "Rhino（.3dm）地形と等高線をレイヤー分け"], ["dxf", "DXF（3D・地形は面、等高線は高さ付き）"]],
+  c3d:  [["3dm", "Rhino（.3dm）標高ごとにレイヤー分け"], ["dxf", "DXF（3D・等高線に高さ付き）"]],
+  flat: [["dxf", "DXF（標高ごとのレイヤー・Illustrator でもレイヤーのまま）"], ["svg", "SVG（Illustrator ではグループとして開きます）"]]
+};
+const FMT_NOTE = {
+  "site:3dm": "レイヤー「敷地（地形）」にメッシュ、「等高線」の下に標高ごとのレイヤー。線は実際の高さに置かれます。",
+  "site:dxf": "レイヤー TERRAIN に地形の面（3DFACE）、EL_+0050.0 のようなレイヤーに高さ付きの等高線。",
+  "c3d:3dm":  "「等高線」の下に標高ごとのレイヤー。線は実際の高さに置かれます。",
+  "c3d:dxf":  "標高ごとのレイヤーに、高さ（Z）付きの等高線。",
+  "flat:dxf": "すべての線を Z=0 に置き、標高ごとにレイヤー分け。Illustrator の「開く」でレイヤー構成が保たれます。",
+  "flat:svg": "Z=0 の平面図。標高ごとにグループ分け（Illustrator ではレイヤーではなくグループになります）。"
+};
+function fillFormats() {
+  const what = $("cwhat").value, sel = $("cfmt"), prev = sel.value;
+  sel.innerHTML = FMT_OPTS[what].map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+  if (FMT_OPTS[what].some(([v]) => v === prev)) sel.value = prev;
+  const svg = sel.value === "svg";
+  $("cunit").disabled = svg;
+  if (svg) $("cunit").value = "model";
+  $("cfmtnote").textContent = FMT_NOTE[what + ":" + sel.value] || "";
+  $("cgo").textContent = what === "site" ? "敷地と等高線を書き出す" : "等高線を書き出す";
+}
+
+/* --- 地形メッシュ（書き出し用・実寸 m） --- */
+function terrainGrid(maxVerts) {
+  const r = region(), c = r.c;
+  const W = c.x1 - c.x0, H = c.y1 - c.y0;
+  let step = Math.max(1, +$("step").value);
+  while (Math.ceil(W / step) * Math.ceil(H / step) > maxVerts) step++;
+  const nx = Math.floor((W - 1) / step) + 1, ny = Math.floor((H - 1) / step) + 1;
+  const xs = new Float64Array(nx), ys = new Float64Array(ny), z = new Float32Array(nx * ny);
+  for (let i = 0; i < nx; i++) xs[i] = i * step * G.mx;
+  for (let j = 0; j < ny; j++) ys[j] = (H - 1 - j * step) * G.my;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++)
+    z[j * nx + i] = G.z[(c.y0 + j * step) * G.nx + (c.x0 + i * step)];
+  return { nx, ny, xs, ys, z, step };
+}
+
 /* --- DXF --- */
-function buildDXF(C) {
+function buildDXF(C, T, opt) {
   const L = [], put = (c, v) => { L.push(c, v); };
-  const name = lv => "EL_" + (lv < 0 ? "-" : "") + Math.abs(lv).toFixed(1).padStart(7, "0");
+  const u = opt.u, flat = opt.flat;
+  const layers = [];
+  if (T) layers.push(["TERRAIN", 8]);
+  C.levels.forEach((lv, i) => { if (C.sets[i].length) layers.push(["EL_" + elName(lv), i % 5 === 0 ? 1 : 7]); });
   put(0, "SECTION"); put(2, "HEADER");
   put(9, "$ACADVER"); put(1, "AC1015");
-  put(9, "$INSUNITS"); put(70, 4);                    // 4 = ミリメートル
+  put(9, "$INSUNITS"); put(70, opt.real ? 6 : 4);          // 6 = メートル, 4 = ミリメートル
   put(0, "ENDSEC");
   put(0, "SECTION"); put(2, "TABLES");
   put(0, "TABLE"); put(2, "LTYPE"); put(5, "5"); put(100, "AcDbSymbolTable"); put(70, 1);
   put(0, "LTYPE"); put(5, "14"); put(100, "AcDbSymbolTableRecord"); put(100, "AcDbLinetypeTableRecord");
   put(2, "CONTINUOUS"); put(70, 0); put(3, "Solid line"); put(72, 65); put(73, 0); put(40, 0);
   put(0, "ENDTAB");
-  put(0, "TABLE"); put(2, "LAYER"); put(5, "2"); put(100, "AcDbSymbolTable"); put(70, C.levels.length);
-  C.levels.forEach((lv, i) => {
+  put(0, "TABLE"); put(2, "LAYER"); put(5, "2"); put(100, "AcDbSymbolTable"); put(70, layers.length);
+  layers.forEach(([nm, col], i) => {
     put(0, "LAYER"); put(5, (0x200 + i).toString(16).toUpperCase());
     put(100, "AcDbSymbolTableRecord"); put(100, "AcDbLayerTableRecord");
-    put(2, name(lv)); put(70, 0); put(62, [1, 2, 3, 4, 5, 6, 30][i % 7]); put(6, "CONTINUOUS");
+    put(2, nm); put(70, 0); put(62, col); put(6, "CONTINUOUS");
   });
   put(0, "ENDTAB"); put(0, "ENDSEC");
   put(0, "SECTION"); put(2, "ENTITIES");
   let h = 0x1000;
+  const f = v => v.toFixed(4);
+  if (T) {
+    const zu = opt.zu, nx = T.nx;
+    for (let j = 0; j < T.ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+      const za = T.z[a], zb = T.z[b], zd = T.z[d], ze = T.z[e];
+      if (za <= NODATA + 1 || zb <= NODATA + 1 || zd <= NODATA + 1 || ze <= NODATA + 1) continue;
+      put(0, "3DFACE"); put(5, (h++).toString(16).toUpperCase());
+      put(100, "AcDbEntity"); put(8, "TERRAIN"); put(100, "AcDbFace");
+      put(10, f(T.xs[i] * zu)); put(20, f(T.ys[j] * zu)); put(30, f(za * zu));
+      put(11, f(T.xs[i + 1] * zu)); put(21, f(T.ys[j] * zu)); put(31, f(zb * zu));
+      put(12, f(T.xs[i + 1] * zu)); put(22, f(T.ys[j + 1] * zu)); put(32, f(ze * zu));
+      put(13, f(T.xs[i] * zu)); put(23, f(T.ys[j + 1] * zu)); put(33, f(zd * zu));
+    }
+  }
   C.levels.forEach((lv, k) => {
     for (const ln of C.sets[k]) {
       put(0, "LWPOLYLINE"); put(5, (h++).toString(16).toUpperCase());
-      put(100, "AcDbEntity"); put(8, name(lv));
+      put(100, "AcDbEntity"); put(8, "EL_" + elName(lv));
       put(100, "AcDbPolyline"); put(90, ln.pts.length); put(70, ln.closed ? 1 : 0); put(43, 0);
-      for (const p of ln.pts) { put(10, p[0].toFixed(4)); put(20, p[1].toFixed(4)); }
+      if (!flat) put(38, f(lv * opt.zu));
+      for (const p of ln.pts) { put(10, f(p[0] * u)); put(20, f(p[1] * u)); }
     }
   });
   put(0, "ENDSEC"); put(0, "EOF");
@@ -1091,7 +1190,7 @@ function buildDXF(C) {
   return out.join("");
 }
 
-/* --- SVG --- */
+/* --- SVG（平面・模型寸法 mm） --- */
 function buildSVG(C) {
   const W = C.sizeX, H = C.sizeY;
   const p = [];
@@ -1102,7 +1201,7 @@ function buildSVG(C) {
   p.push(`<g fill="none" stroke="#000" stroke-width="0.1" stroke-linejoin="round">\n`);
   C.levels.forEach((lv, k) => {
     if (!C.sets[k].length) return;
-    p.push(`<g id="EL_${lv.toFixed(1)}" data-elevation="${lv}">`);
+    p.push(`<g id="EL_${elName(lv)}" data-elevation="${lv}">`);
     for (const ln of C.sets[k]) {
       const d = ln.pts.map((pt, i) => (i ? "L" : "M") + pt[0].toFixed(3) + " " + (H - pt[1]).toFixed(3)).join(" ");
       p.push(`<path d="${d}${ln.closed ? " Z" : ""}"/>`);
@@ -1113,58 +1212,141 @@ function buildSVG(C) {
   return p.join("");
 }
 
+/* --- Rhino .3dm --- */
+const RHINO_BASE = "https://cdn.jsdelivr.net/npm/rhino3dm@8.35.0/";
+let RH = null, rhLoading = null;
+function loadRhino() {
+  if (RH) return Promise.resolve(RH);
+  if (rhLoading) return rhLoading;
+  rhLoading = new Promise((res, rej) => {
+    const go = () => window.rhino3dm({ locateFile: f => RHINO_BASE + f }).then(m => { RH = m; res(m); }, rej);
+    if (window.rhino3dm) return go();
+    const sc = document.createElement("script");
+    sc.src = RHINO_BASE + "rhino3dm.min.js";
+    sc.onload = go;
+    sc.onerror = () => { rhLoading = null; rej(new Error("Rhino 形式の書き出し部品を読み込めませんでした。インターネット接続を確認してください。")); };
+    document.head.appendChild(sc);
+  }).catch(e => { rhLoading = null; throw e; });
+  return rhLoading;
+}
+function build3dm(rh, C, T, opt) {
+  const doc = new rh.File3dm();
+  doc.settings().modelUnitSystem = opt.real ? rh.UnitSystem.Meters : rh.UnitSystem.Millimeters;
+  const u = opt.u, zu = opt.zu;
+  if (T) {
+    const li = doc.layers().addLayer("敷地（地形）", { r: 150, g: 150, b: 150, a: 255 });
+    const m = new rh.Mesh(), V = m.vertices(), F = m.faces(), nx = T.nx;
+    for (let j = 0; j < T.ny; j++) for (let i = 0; i < nx; i++) {
+      const v = T.z[j * nx + i];
+      V.add(T.xs[i] * zu, T.ys[j] * zu, (v <= NODATA + 1 ? 0 : v) * zu);
+    }
+    for (let j = 0; j < T.ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+      if (T.z[a] <= NODATA + 1 || T.z[b] <= NODATA + 1 || T.z[d] <= NODATA + 1 || T.z[e] <= NODATA + 1) continue;
+      F.addQuadFace(a, d, e, b);
+    }
+    m.normals().computeNormals(); m.compact();
+    const at = new rh.ObjectAttributes(); at.layerIndex = li; at.name = "地形";
+    doc.objects().add(m, at); at.delete(); m.delete();
+  }
+  const pi = doc.layers().addLayer("等高線", { r: 30, g: 30, b: 30, a: 255 });
+  const pid = doc.layers().findIndex(pi).id;
+  C.levels.forEach((lv, k) => {
+    if (!C.sets[k].length) return;
+    const Ly = new rh.Layer();
+    Ly.name = `EL ${elName(lv)} m`;
+    Ly.color = k % 5 === 0 ? { r: 190, g: 30, b: 30, a: 255 } : { r: 20, g: 20, b: 20, a: 255 };
+    Ly.parentLayerId = pid;
+    const li = doc.layers().add(Ly); Ly.delete();
+    const z = opt.flat ? 0 : lv * zu;
+    for (const ln of C.sets[k]) {
+      const n = ln.pts.length + (ln.closed ? 1 : 0);
+      const pl = new rh.Polyline(n);
+      for (const p of ln.pts) pl.add(p[0] * u, p[1] * u, z);
+      if (ln.closed) pl.add(ln.pts[0][0] * u, ln.pts[0][1] * u, z);
+      const crv = pl.toPolylineCurve();
+      const at = new rh.ObjectAttributes(); at.layerIndex = li;
+      doc.objects().add(crv, at);
+      at.delete(); crv.delete(); pl.delete();
+    }
+  });
+  const bytes = doc.toByteArray();
+  doc.delete();
+  return bytes;
+}
+
 /* --- 書き出し --- */
 $("cgo").onclick = async () => {
   const btn = $("cgo"), label = btn.textContent;
   btn.disabled = true;
   try {
+    const what = $("cwhat").value, fmtv = $("cfmt").value;
+    const real = $("cunit").value === "real" && fmtv !== "svg";
     btn.textContent = "抽出しています…"; say("等高線を抽出しています。少し時間がかかります。"); await yield_();
     const C = buildContours(false);
     if (!C || !C.levels.length) { say("この範囲に等高線が引けませんでした。", true); return; }
-    const paths = C.sets.reduce((s, x) => s + x.length, 0);
     const o = C.o;
-    const tag = `1-${o.den}_${o.iv}m`;
-    if ($("cfmt").value === "svg") {
+    const opt = { real, flat: what === "flat",
+                  u: real ? 1 / o.k : 1,             // 等高線の平面座標（模型 mm）に掛ける
+                  zu: real ? 1 : o.k };              // 実寸 m に掛ける
+    let T = null;
+    if (what === "site") {
+      say("地形メッシュを作っています。"); await yield_();
+      T = terrainGrid(fmtv === "dxf" ? 90000 : 250000);
+    }
+    const paths = C.sets.reduce((s, x) => s + x.length, 0);
+    const kind = what === "site" ? "site" : what === "c3d" ? "contour3d" : "contour2d";
+    const tag = `${kind}_1-${o.den}_${o.iv}m`;
+    const readme =
+      `基盤地図情報 数値標高モデル から作成したデータ\r\n` +
+      `------------------------------------------------------------\r\n` +
+      `内容              ${what === "site" ? "敷地（地形メッシュ）＋等高線（3D）" : what === "c3d" ? "等高線（3D・高さ付き）" : "等高線（平面・Z=0）"}\r\n` +
+      `模型の縮尺        1/${o.den}\r\n` +
+      `板の厚み          ${$("thick").value} mm\r\n` +
+      `等高線の間隔      ${o.iv} m（実寸）\r\n` +
+      `層数              ${C.levels.length} 枚（${C.levels[0]} m 〜 ${C.levels[C.levels.length - 1]} m）\r\n` +
+      `輪郭の本数        ${paths}\r\n` +
+      `図面の単位        ${real ? "メートル（実寸）" : "ミリメートル（模型寸法・縮尺をかけた大きさ）"}\r\n` +
+      `原点              切り出し範囲の南西角　X＝東　Y＝北　Z＝標高\r\n` +
+      (T ? `地形メッシュ      ${T.nx} × ${T.ny} 点（${(T.step * G.mx).toFixed(1)} m 間隔）・海やデータなしは面なし\r\n` : "") +
+      `平滑化            半径 ${o.smooth} 格子\r\n` +
+      `線の単純化        ${o.tol.toFixed(2)} mm（模型寸法）\r\n` +
+      `切り捨てた島      ${o.minArea.toFixed(1)} mm² 未満（模型寸法）\r\n` +
+      `------------------------------------------------------------\r\n` +
+      `等高線は標高ごとに別レイヤー（EL +0050.0 のような名前）です。\r\n` +
+      `5 本ごとの計曲線は赤で色分けしています。\r\n` +
+      `出典：国土地理院 基盤地図情報 ダウンロードサービス\r\n`;
+
+    if (fmtv === "svg") {
       say("SVG を組み立てています。"); await yield_();
-      const svg = buildSVG(C);
-      await deliver(`contour_${tag}.svg`, new Blob([svg], { type: "image/svg+xml" }));
-      say(`contour_${tag}.svg を保存しました。${C.levels.length} 層 / ${fmt(paths)} 本。`);
+      await deliver(`${tag}.svg`, new Blob([buildSVG(C)], { type: "image/svg+xml" }));
+      say(`${tag}.svg を保存しました。${C.levels.length} 層 / ${fmt(paths)} 本。`);
+      return;
+    }
+    let file, ext;
+    if (fmtv === "3dm") {
+      btn.textContent = "Rhino 形式を準備中…";
+      say("Rhino 形式の書き出し部品を読み込んでいます（初回だけ数秒かかります）。"); await yield_();
+      const rh = await loadRhino();
+      say("3dm を組み立てています。"); await yield_();
+      file = build3dm(rh, C, T, opt); ext = "3dm";
     } else {
       say("DXF を組み立てています。"); await yield_();
-      const dxf = buildDXF(C);
-      const readme =
-        `基盤地図情報 数値標高モデル から作成した積層模型用の等高線\r\n` +
-        `------------------------------------------------------------\r\n` +
-        `模型の縮尺        1/${o.den}\r\n` +
-        `板の厚み          ${$("thick").value} mm\r\n` +
-        `等高線の間隔      ${o.iv} m（実寸）\r\n` +
-        `層数              ${C.levels.length} 枚（${C.levels[0]} m 〜 ${C.levels[C.levels.length-1]} m）\r\n` +
-        `輪郭の本数        ${paths}\r\n` +
-        `模型の大きさ      ${C.sizeX.toFixed(1)} × ${C.sizeY.toFixed(1)} mm\r\n` +
-        `模型の高さ        ${((C.zmax - C.zmin) * o.k).toFixed(1)} mm\r\n` +
-        `図面の単位        ミリメートル（実寸ではなく模型寸法）\r\n` +
-        `レイヤー名        EL_ + 標高（m・小数1桁）\r\n` +
-        `平滑化            半径 ${o.smooth} 格子\r\n` +
-        `線の単純化        ${o.tol.toFixed(2)} mm\r\n` +
-        `切り捨てた島      ${o.minArea.toFixed(1)} mm² 未満\r\n` +
-        `------------------------------------------------------------\r\n` +
-        `各標高が別レイヤーに入っています。切り出す前にレイヤーごとに\r\n` +
-        `板の上へ配置し直してください。\r\n` +
-        `出典：国土地理院 基盤地図情報 ダウンロードサービス\r\n`;
-      const blob = await zipFiles([
-        { name: `contour_${tag}.dxf`, data: dxf },
-        { name: `README.txt`, data: readme }]);
-      await deliver(`contour_${tag}.zip`, blob);
-      say(`contour_${tag}.zip を保存しました。${C.levels.length} 層 / ${fmt(paths)} 本。`);
+      file = buildDXF(C, T, opt); ext = "dxf";
     }
+    const blob = await zipFiles([{ name: `${tag}.${ext}`, data: file }, { name: "README.txt", data: readme }]);
+    await deliver(`${tag}.zip`, blob);
+    say(`${tag}.zip を保存しました。${C.levels.length} 層 / ${fmt(paths)} 本${T ? ` ＋ 地形 ${T.nx}×${T.ny} 点` : ""}。`);
   } catch (e) {
     const code = e && e.code;
     if (code === "declined") say("保存を取り消しました。");
     else if (code === "rate_limited") say("保存の確認が開いています。閉じてからもう一度どうぞ。", true);
     else if (code === "too_large") say("ファイルが大きすぎます。間隔を広げるか範囲を狭めてください。", true);
-    else say("等高線を書き出せませんでした：" + ((e && e.message) || e), true);
-  } finally { btn.textContent = label; btn.disabled = false; }
+    else say("書き出せませんでした：" + ((e && e.message) || e), true);
+  } finally { btn.textContent = label; btn.disabled = false; fillFormats(); }
 };
+$("cwhat").onchange = fillFormats;
+$("cfmt").onchange = fillFormats;
 
 /* --- 配線 --- */
 $("ivmode").onchange = () => {
@@ -1174,7 +1356,7 @@ $("ivmode").onchange = () => {
 };
 let scaleTouched = false;
 $("scale").onchange = () => { scaleTouched = true; refreshContours(true); };
-["thick", "cfmt"].forEach(id => $(id).onchange = () => refreshContours(true));
+$("thick").onchange = () => refreshContours(true);
 /* 範囲が変わったら、模型が机に載る大きさになる縮尺を選び直す（手動で選んだあとは触らない） */
 function autoScale() {
   if (scaleTouched || !G) return;
@@ -1188,11 +1370,14 @@ $("ivman").oninput = () => refreshContours();
 ["sm", "ma", "tl"].forEach(id => $(id).oninput = () => { contourEstimate(); refreshContours(); });
 $("showc").onchange = () => draw();
 
-/* ===================== 3D ビュー ===================== */
-const V3 = { on: false, renderer: null, scene: null, camera: null, mesh: null, target: null,
-             theta: 0.55, phi: 0.95, dist: 165, loading: null };
+/* ===================== 3D ビュー（Rhino 風） ===================== */
+const V3 = { on: false, renderer: null, scene: null, persp: null, ortho: null, target: null,
+             vp: "persp", theta: 0.55, phi: 1.0, dist: 170, oHalf: 62,
+             terrain: null, contours: null, grid: null, loading: null,
+             k: 1, spanX: 1, spanZ: 1, base: 0, zs: 1, hmax: 0 };
 const cssVar = n => getComputedStyle(document.body).getPropertyValue(n).trim();
 const hexRGB = h => /^#[0-9a-f]{6}$/i.test(h) ? [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16)) : [195, 214, 226];
+const VP_LABEL = { persp: "Perspective", top: "Top", front: "Front", right: "Right" };
 
 function loadThree() {
   if (window.THREE) return Promise.resolve(window.THREE);
@@ -1215,6 +1400,7 @@ async function show3D(on) {
   $("v3").classList.toggle("hide", !on);
   $("row2d").classList.toggle("hide", on);
   $("row3d").classList.toggle("hide", !on);
+  $("row3dhelp").classList.toggle("hide", !on);
   $("viewtitle").textContent = on ? "3D ビュー" : "陰影起伏図";
   if (!on) return;
   const msg = $("v3msg");
@@ -1232,43 +1418,79 @@ function init3D() {
   host.appendChild(r.domElement);
   V3.renderer = r;
   V3.scene = new T.Scene();
-  V3.camera = new T.PerspectiveCamera(38, 4 / 3, 0.5, 5000);
+  V3.persp = new T.PerspectiveCamera(35, 4 / 3, 0.5, 6000);
+  V3.ortho = new T.OrthographicCamera(-1, 1, 1, -1, -6000, 6000);
   V3.target = new T.Vector3(0, 0, 0);
-  V3.scene.add(new T.HemisphereLight(0xf2f5ff, 0x3b4a42, 0.72));
-  const sun = new T.DirectionalLight(0xffffff, 0.9);
-  sun.position.set(-120, 170, -90);                // 北西から
-  V3.scene.add(sun);
+  V3.scene.add(new T.HemisphereLight(0xffffff, 0x6d6d6d, 0.62));
+  const sun = new T.DirectionalLight(0xffffff, 0.78); sun.position.set(-110, 180, 90);  // 左上から（Rhino の既定光源に近い向き）
+  const fill = new T.DirectionalLight(0xffffff, 0.22); fill.position.set(120, 60, -100);
+  V3.scene.add(sun, fill);
+  // 作業平面グリッド（Rhino：細線と5本ごとの太線、X 軸は赤、Y 軸は緑）
+  const g = new T.Group(), minor = [], major = [], N = 30, S = 4;
+  for (let i = -N; i <= N; i++) {
+    const arr = i % 5 === 0 ? major : minor;
+    if (i !== 0) { arr.push(i * S, 0, -N * S, i * S, 0, N * S); arr.push(-N * S, 0, i * S, N * S, 0, i * S); }
+  }
+  const lines = (a, col) => { const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.Float32BufferAttribute(a, 3));
+    return new T.LineSegments(geo, new T.LineBasicMaterial({ color: col })); };
+  g.add(lines(minor, 0x8e8e8e), lines(major, 0x767676));
+  g.add(lines([0, 0, 0, N * S, 0, 0], 0x962626));                 // X（東）
+  g.add(lines([0, 0, 0, 0, 0, -N * S], 0x2b7a2b));                // Y（北）＝ three の -Z
+  V3.grid = g; V3.scene.add(g);
   bindOrbit(r.domElement);
   if (window.ResizeObserver) new ResizeObserver(resize3D).observe(host);
   else window.addEventListener("resize", resize3D);
+  document.querySelectorAll("#vpseg button").forEach(b => b.onclick = () => setViewport(b.dataset.vp));
   resize3D();
+}
+function setViewport(vp) {
+  V3.vp = vp;
+  document.querySelectorAll("#vpseg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.vp === vp)));
+  $("vplabel").textContent = VP_LABEL[vp];
+  render3D();
 }
 function resize3D() {
   if (!V3.renderer) return;
   const h = $("v3"), w = h.clientWidth, hh = h.clientHeight;
   if (!w || !hh) return;
   V3.renderer.setSize(w, hh, false);
-  V3.camera.aspect = w / hh; V3.camera.updateProjectionMatrix();
   render3D();
+}
+function orthoBasis() {                       // 画面の右方向・上方向・視線（three 座標）
+  if (V3.vp === "top")   return { right: [1, 0, 0], up: [0, 0, -1], eye: [0, 1, 0] };
+  if (V3.vp === "front") return { right: [1, 0, 0], up: [0, 1, 0], eye: [0, 0, 1] };
+  return { right: [0, 0, -1], up: [0, 1, 0], eye: [1, 0, 0] };                 // right
 }
 let raf3 = 0;
 function render3D() {
   if (raf3 || !V3.renderer) return;
   raf3 = requestAnimationFrame(() => {
     raf3 = 0;
-    const c = V3.camera, t = V3.target;
-    c.position.set(t.x + V3.dist * Math.sin(V3.phi) * Math.sin(V3.theta),
-                   t.y + V3.dist * Math.cos(V3.phi),
-                   t.z + V3.dist * Math.sin(V3.phi) * Math.cos(V3.theta));
-    c.lookAt(t);
-    V3.renderer.render(V3.scene, c);
+    const el = V3.renderer.domElement, asp = (el.clientWidth || 4) / (el.clientHeight || 3), t = V3.target;
+    let cam;
+    if (V3.vp === "persp") {
+      cam = V3.persp; cam.aspect = asp; cam.updateProjectionMatrix();
+      cam.up.set(0, 1, 0);
+      cam.position.set(t.x + V3.dist * Math.sin(V3.phi) * Math.sin(V3.theta),
+                       t.y + V3.dist * Math.cos(V3.phi),
+                       t.z + V3.dist * Math.sin(V3.phi) * Math.cos(V3.theta));
+    } else {
+      cam = V3.ortho; const hh = V3.oHalf;
+      cam.left = -hh * asp; cam.right = hh * asp; cam.top = hh; cam.bottom = -hh; cam.updateProjectionMatrix();
+      const b = orthoBasis();
+      cam.up.set(b.up[0], b.up[1], b.up[2]);
+      cam.position.set(t.x + b.eye[0] * 1000, t.y + b.eye[1] * 1000, t.z + b.eye[2] * 1000);
+    }
+    cam.lookAt(t);
+    V3.renderer.render(V3.scene, cam);
   });
 }
 function bindOrbit(el) {
   let mode = null, lx = 0, ly = 0;
   el.addEventListener("contextmenu", e => e.preventDefault());
   el.addEventListener("pointerdown", e => {
-    mode = (e.button === 2 || e.shiftKey) ? "pan" : "rot";
+    mode = (V3.vp !== "persp" || e.button === 2 || e.shiftKey) ? "pan" : "rot";
     lx = e.clientX; ly = e.clientY;
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     $("v3").style.cursor = "grabbing";
@@ -1279,11 +1501,16 @@ function bindOrbit(el) {
     lx = e.clientX; ly = e.clientY;
     if (mode === "rot") {
       V3.theta -= dx * 0.006;
-      V3.phi = Math.max(0.06, Math.min(1.5, V3.phi - dy * 0.006));
-    } else {
+      V3.phi = Math.max(0.04, Math.min(1.53, V3.phi - dy * 0.006));
+    } else if (V3.vp === "persp") {
       const k = V3.dist * 0.0017, cs = Math.cos(V3.theta), sn = Math.sin(V3.theta);
       V3.target.x += (-cs * dx - sn * dy) * k;
       V3.target.z += ( sn * dx - cs * dy) * k;
+    } else {
+      const b = orthoBasis(), k = 2 * V3.oHalf / (el.clientHeight || 300);
+      V3.target.x += (-b.right[0] * dx + b.up[0] * dy) * k;
+      V3.target.y += (-b.right[1] * dx + b.up[1] * dy) * k;
+      V3.target.z += (-b.right[2] * dx + b.up[2] * dy) * k;
     }
     render3D();
   });
@@ -1292,9 +1519,16 @@ function bindOrbit(el) {
   el.addEventListener("pointercancel", end);
   el.addEventListener("wheel", e => {
     e.preventDefault();
-    V3.dist = Math.max(8, Math.min(700, V3.dist * Math.exp(e.deltaY * 0.0012)));
+    const f = Math.exp(e.deltaY * 0.0012);
+    if (V3.vp === "persp") V3.dist = Math.max(4, Math.min(900, V3.dist * f));
+    else V3.oHalf = Math.max(0.5, Math.min(600, V3.oHalf * f));
     render3D();
   }, { passive: false });
+}
+function disposeObj(o) {
+  if (!o) return;
+  V3.scene.remove(o);
+  o.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
 }
 function build3D() {
   if (!V3.renderer || !G) return;
@@ -1303,10 +1537,10 @@ function build3D() {
   const s = Math.max(1, Math.ceil(Math.max(W, H) / 360));
   const nx = Math.floor((W - 1) / s) + 1, ny = Math.floor((H - 1) / s) + 1;
   if (nx < 2 || ny < 2) return;
-  const terrace = $("v3mode").value === "terrace", iv = interval();
+  const terrace = $("v3terr").checked, iv = interval(), disp = $("v3disp").value;
   const zs = +$("zs").value / 10;
   const spanX = (nx - 1) * s * G.mx, spanZ = (ny - 1) * s * G.my;
-  const k = 100 / Math.max(spanX, spanZ, 1);      // 画面上の長辺を 100 にそろえる
+  const k = 100 / Math.max(spanX, spanZ, 1);        // 長辺を 100 にそろえる
   const src = new Float32Array(nx * ny);
   let zmin = Infinity;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -1315,47 +1549,93 @@ function build3D() {
     if (v > NODATA + 1 && v < zmin) zmin = v;
   }
   const base = Math.min(0, isFinite(zmin) ? zmin : 0);
+  Object.assign(V3, { k, spanX, spanZ, base, zs });
   const pos = new Float32Array(nx * ny * 3), col = new Float32Array(nx * ny * 3);
   const rng = Math.max(1, G.zmax - G.zmin), sea = hexRGB(cssVar("--sea"));
+  let hmax = 0;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const p = j * nx + i, v = src[p], ok = v > NODATA + 1;
     let h = ok ? v : base;
     if (ok && terrace) h = Math.floor(h / iv) * iv;
-    pos[p * 3]     = (i * s * G.mx - spanX / 2) * k;
-    pos[p * 3 + 1] = (h - base) * k * zs;
-    pos[p * 3 + 2] = (j * s * G.my - spanZ / 2) * k;
-    let rgb = sea;
-    if (ok) {
-      const t = Math.max(0, Math.min(1, (h - G.zmin) / rng)) * (RAMP.length - 1);
-      const i0 = Math.min(RAMP.length - 2, Math.floor(t)), f = t - i0;
-      rgb = [0, 1, 2].map(q => RAMP[i0][q] * (1 - f) + RAMP[i0 + 1][q] * f);
-    }
+    const y = (h - base) * k * zs; if (y > hmax) hmax = y;
+    pos[p * 3] = (i * s * G.mx - spanX / 2) * k; pos[p * 3 + 1] = y; pos[p * 3 + 2] = (j * s * G.my - spanZ / 2) * k;
+    let rgb;
+    if (disp === "color") {
+      rgb = sea;
+      if (ok) { const t = Math.max(0, Math.min(1, (h - G.zmin) / rng)) * (RAMP.length - 1);
+        const i0 = Math.min(RAMP.length - 2, Math.floor(t)), f = t - i0;
+        rgb = [0, 1, 2].map(q => RAMP[i0][q] * (1 - f) + RAMP[i0 + 1][q] * f); }
+    } else rgb = ok ? [206, 206, 206] : [178, 186, 194];     // Rhino のシェーディングに近い明るい灰色
     col[p * 3] = rgb[0] / 255; col[p * 3 + 1] = rgb[1] / 255; col[p * 3 + 2] = rgb[2] / 255;
   }
-  const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
-  let q = 0;
-  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
-    const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
-    idx[q++] = a; idx[q++] = d; idx[q++] = b;
-    idx[q++] = b; idx[q++] = d; idx[q++] = e;
+  V3.hmax = hmax;
+  const g = new T.Group();
+  if (disp === "wire") {
+    const every = Math.max(1, Math.round(Math.max(nx, ny) / 70)), seg = [];
+    const P = p => [pos[p * 3], pos[p * 3 + 1], pos[p * 3 + 2]];
+    for (let j = 0; j < ny; j += every) for (let i = 0; i < nx - 1; i++) seg.push(...P(j * nx + i), ...P(j * nx + i + 1));
+    for (let i = 0; i < nx; i += every) for (let j = 0; j < ny - 1; j++) seg.push(...P(j * nx + i), ...P((j + 1) * nx + i));
+    const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(seg, 3));
+    g.add(new T.LineSegments(geo, new T.LineBasicMaterial({ color: 0x2a2a2a })));
+  } else {
+    const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+    let q = 0;
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+      idx[q++] = a; idx[q++] = d; idx[q++] = b; idx[q++] = b; idx[q++] = d; idx[q++] = e;
+    }
+    const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new T.BufferAttribute(col, 3));
+    geo.setIndex(new T.BufferAttribute(idx, 1));
+    geo.computeVertexNormals();
+    g.add(new T.Mesh(geo, new T.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.9, metalness: 0, flatShading: terrace, side: T.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })));
   }
-  const g = new T.BufferGeometry();
-  g.setAttribute("position", new T.BufferAttribute(pos, 3));
-  g.setAttribute("color", new T.BufferAttribute(col, 3));
-  g.setIndex(new T.BufferAttribute(idx, 1));
-  g.computeVertexNormals();
-  if (V3.mesh) { V3.scene.remove(V3.mesh); V3.mesh.geometry.dispose(); V3.mesh.material.dispose(); }
-  V3.mesh = new T.Mesh(g, new T.MeshStandardMaterial({
-    vertexColors: true, roughness: 0.93, metalness: 0, flatShading: terrace, side: T.DoubleSide }));
-  V3.scene.add(V3.mesh);
+  disposeObj(V3.terrain); V3.terrain = g; V3.scene.add(g);
+  V3.grid.position.y = -0.05;
+  build3DContours();
+}
+function build3DContours() {
+  if (!V3.renderer) return;
+  disposeObj(V3.contours); V3.contours = null;
+  if (!$("v3cont").checked || !CPREV || !CPREV.sets.length) { render3D(); return; }
+  const T = THREE, o = CPREV.o, k = V3.k, zs = V3.zs;
+  const hN = CPREV.sizeY / o.k;                       // 下絵の南北の長さ（m）
+  const norm = [], idx5 = [];
+  CPREV.sets.forEach((lines, li) => {
+    const lv = CPREV.levels[li], y = (lv - V3.base) * k * zs + 0.06;
+    const arr = li % 5 === 0 ? idx5 : norm;
+    for (const ln of lines) {
+      const p = ln.pts, n = p.length, last = ln.closed ? n : n - 1;
+      for (let i = 0; i < last; i++) {
+        const a = p[i], b = p[(i + 1) % n];
+        arr.push((a[0] / o.k - V3.spanX / 2) * k, y, (hN - a[1] / o.k - V3.spanZ / 2) * k,
+                 (b[0] / o.k - V3.spanX / 2) * k, y, (hN - b[1] / o.k - V3.spanZ / 2) * k);
+      }
+    }
+  });
+  const g = new T.Group();
+  const mk = (a, col) => { if (!a.length) return; const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.Float32BufferAttribute(a, 3));
+    g.add(new T.LineSegments(geo, new T.LineBasicMaterial({ color: col }))); };
+  mk(norm, 0x111111); mk(idx5, 0xb01e1e);
+  V3.contours = g; V3.scene.add(g);
   render3D();
 }
 let b3Timer = null;
 function rebuild3D() { if (!V3.on || !V3.renderer) return; clearTimeout(b3Timer); b3Timer = setTimeout(build3D, 90); }
-function resetView3D() { V3.theta = 0.55; V3.phi = 0.95; V3.dist = 165; if (V3.target) V3.target.set(0, 0, 0); render3D(); }
+function resetView3D() {
+  V3.theta = 0.55; V3.phi = 1.0; V3.dist = 170; V3.oHalf = 62;
+  if (V3.target) V3.target.set(0, V3.vp === "persp" || V3.vp === "top" ? 0 : V3.hmax / 2, 0);
+  render3D();
+}
 $("v2d").onclick = () => show3D(false);
 $("v3d").onclick = () => show3D(true);
-$("v3mode").onchange = () => build3D();
+$("v3disp").onchange = () => build3D();
+$("v3terr").onchange = () => build3D();
+$("v3cont").onchange = () => build3DContours();
 $("v3reset").onclick = resetView3D;
 
 /* ===== サンプル（伊豆大島・実データを約1/19に粗くしたもの） ===== */
@@ -1371,6 +1651,7 @@ const SAMPLE_B64 = "8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx2PHY8djx
   G = finish({ z, nx: N, ny: N, lon0: 139.3375, lat1: 34.8,
                lon1: 139.3375 + N*d, lat0: 34.8 - N*d, dlon: d, dlat: d,
                tiles: 119, types: ["5mメッシュ（標高）※サンプル"], dates: ["2025-06-20"] });
+  fillFormats();
   draw(); estimate(); autoScale(); refreshContours(true);
 })();
 </script>

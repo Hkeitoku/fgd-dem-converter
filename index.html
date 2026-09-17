@@ -131,6 +131,25 @@ button:hover{border-color:var(--accent);color:var(--accent)}
   color:#2b2b2b;pointer-events:none;letter-spacing:.01em}
 #vpseg button{font-family:"Segoe UI",system-ui,sans-serif}
 .maprow select{width:auto;padding:4px 8px;font-size:11.5px}
+/* 設定を動かしながら見られるよう、左の列（地図・3D）を画面に固定 */
+@media (min-width:921px){
+  .deck>div:first-child{position:sticky;top:14px}
+  #cv{max-height:calc(100vh - 250px);width:auto;max-width:100%;margin-inline:auto}
+  #v3{max-height:calc(100vh - 300px)}
+}
+@media (max-width:920px){
+  .deck>div:first-child{position:sticky;top:0;z-index:5;background:var(--paper);padding-block:6px 8px;
+    box-shadow:0 6px 12px -8px rgba(0,0,0,.35)}
+  .deck>div:first-child #drop{padding:8px 12px;margin-bottom:8px}
+  .deck>div:first-child #drop small,#row3dhelp,.deck>div:first-child .pad .meter{display:none}
+  #cv{max-height:34vh;width:auto;max-width:100%;margin-inline:auto}
+  #v3{max-height:34vh}
+}
+details.panel>summary{list-style:none;cursor:pointer}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary h2::before{content:"▸";display:inline-block;width:1.1em;color:var(--faint);transition:transform .15s}
+details.panel[open]>summary h2::before{transform:rotate(90deg)}
+details.panel:not([open])>summary{border-bottom:0}
 .chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted);font-size:11.5px}
 .chk input{accent-color:var(--accent);margin:0}
 #cgo{width:100%;margin-top:11px;padding:11px;background:var(--surface);color:var(--accent);
@@ -219,49 +238,10 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
     </div>
 
     <div>
-      <div class="panel">
-        <div class="phead"><h2>読み込んだデータ</h2><span class="tag">source</span></div>
+      <details class="panel" id="metabox">
+        <summary class="phead"><h2>読み込んだデータ</h2><span class="tag" id="metasum" style="text-transform:none;letter-spacing:.02em">source</span></summary>
         <div class="pad"><dl class="read" id="meta"></dl></div>
-      </div>
-
-      <div class="panel" style="margin-top:16px">
-        <div class="phead"><h2>3D メッシュ</h2><span class="tag">OBJ</span></div>
-
-        <div class="ctl">
-          <div class="lab"><span>解像度（間引き）</span><span id="stepv">1/1</span></div>
-          <input type="range" id="step" min="1" max="10" value="1">
-        </div>
-        <div class="ctl">
-          <div class="lab"><span>標高の倍率</span><span id="zsv">×1.0</span></div>
-          <input type="range" id="zs" min="5" max="50" value="10">
-        </div>
-        <div class="ctl">
-          <div class="lab"><span>海・データなしの扱い</span></div>
-          <select id="sea">
-            <option value="flat">標高 0 m の平面で埋める</option>
-            <option value="hole">面を張らない（穴を開ける）</option>
-            <option value="min">範囲内の最低標高で埋める</option>
-          </select>
-        </div>
-        <div class="ctl">
-          <div class="lab"><span>原点の位置</span></div>
-          <select id="org">
-            <option value="sw">切り出し範囲の南西角</option>
-            <option value="center">切り出し範囲の中心</option>
-          </select>
-        </div>
-        <div class="ctl">
-          <div class="lab"><span>水平方向の単位</span></div>
-          <select id="unit">
-            <option value="1">メートル</option>
-            <option value="1000">ミリメートル</option>
-          </select>
-        </div>
-        <div class="ctl">
-          <button id="go" type="button">OBJ を書き出す</button>
-          <p class="estim" id="estim"></p>
-        </div>
-      </div>
+      </details>
 
       <div class="panel" style="margin-top:16px">
         <div class="phead"><h2>積層模型の等高線</h2><span class="tag">3DM / DXF / SVG</span></div>
@@ -344,6 +324,45 @@ footer code{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
           </select>
           <p class="sub">地形メッシュの細かさは「3D メッシュ」の解像度（間引き）に合わせます。</p>
           <button id="cgo" type="button">等高線を書き出す</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="phead"><h2>3D メッシュ</h2><span class="tag">OBJ</span></div>
+
+        <div class="ctl">
+          <div class="lab"><span>解像度（間引き）</span><span id="stepv">1/1</span></div>
+          <input type="range" id="step" min="1" max="10" value="1">
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>標高の倍率</span><span id="zsv">×1.0</span></div>
+          <input type="range" id="zs" min="5" max="50" value="10">
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>海・データなしの扱い</span></div>
+          <select id="sea">
+            <option value="flat">標高 0 m の平面で埋める</option>
+            <option value="hole">面を張らない（穴を開ける）</option>
+            <option value="min">範囲内の最低標高で埋める</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>原点の位置</span></div>
+          <select id="org">
+            <option value="sw">切り出し範囲の南西角</option>
+            <option value="center">切り出し範囲の中心</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>水平方向の単位</span></div>
+          <select id="unit">
+            <option value="1">メートル</option>
+            <option value="1000">ミリメートル</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <button id="go" type="button">OBJ を書き出す</button>
+          <p class="estim" id="estim"></p>
         </div>
       </div>
     </div>
@@ -608,6 +627,7 @@ function estimate() {
     row("緯度", `${(G.lat1-c.y1*G.dlat).toFixed(4)}–${(G.lat1-c.y0*G.dlat).toFixed(4)}`) +
     row("標高", valid ? `${zmin.toFixed(1)} – ${zmax.toFixed(1)} m` : "—") +
     row("陸地率", tot ? `${(100*valid/tot).toFixed(1)} %` : "—");
+  $("metasum").textContent = `${fmt(G.tiles)} タイル・標高 ${valid ? zmin.toFixed(0) + "–" + zmax.toFixed(0) : "—"} m`;
 }
 const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
 
